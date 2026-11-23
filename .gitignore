@@ -1,0 +1,9 @@
+node_modules
+.env
+.env.*
+!.env.example
+.vercel
+config/*.json
+!config/.gitkeep
+coverage
+*.log

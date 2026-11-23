@@ -1,0 +1,46 @@
+import { z } from 'zod';
+
+const optional = z
+  .string()
+  .optional()
+  .transform((value) => (value?.trim() ? value.trim() : undefined));
+
+const envSchema = z.object({
+  WHATSAPP_TOKEN: z.string().min(1),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1),
+  WHATSAPP_APP_SECRET: z.string().min(1),
+  WHATSAPP_VERIFY_TOKEN: z.string().min(1),
+  GRAPH_API_VERSION: z.string().default('v26.0'),
+
+  ANTHROPIC_API_KEY: z.string().min(1),
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-5-5'),
+
+  UPSTASH_REDIS_REST_URL: optional,
+  UPSTASH_REDIS_REST_TOKEN: optional,
+  KV_REST_API_URL: optional,
+  KV_REST_API_TOKEN: optional,
+
+  BUSINESS_CONFIG: optional,
+  BUSINESS_CONFIG_PATH: optional,
+
+  BOOKING_API_URL: optional,
+  BOOKING_API_TOKEN: optional,
+
+  RESEND_API_KEY: optional,
+  NOTIFY_EMAIL_FROM: optional,
+  NOTIFY_EMAIL_TO: optional,
+
+  DEBOUNCE_MS: z.coerce.number().int().min(0).default(4000),
+  HUMAN_PAUSE_HOURS: z.coerce.number().positive().default(24),
+  HISTORY_LIMIT: z.coerce.number().int().min(6).default(40),
+});
+
+export type Env = z.infer<typeof envSchema>;
+
+export function readEnv(source: Record<string, string | undefined> = process.env): Env {
+  const result = envSchema.safeParse(source);
+  if (!result.success) {
+    throw new Error(`Invalid environment:\n${z.prettifyError(result.error)}`);
+  }
+  return result.data;
+}
