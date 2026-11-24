@@ -28,6 +28,7 @@ export function createApp(deps: AppDependencies) {
   app.post('/webhook', async (c) => {
     const raw = await c.req.text();
     if (!verifySignature(raw, c.req.header('x-hub-signature-256'), deps.appSecret)) {
+      console.warn('Rejected webhook with an invalid signature');
       return c.text('Invalid signature', 401);
     }
 
@@ -39,6 +40,7 @@ export function createApp(deps: AppDependencies) {
     }
 
     const events = parseWebhook(payload, deps.phoneNumberId);
+    console.info(`Webhook received: ${events.length ? events.map((event) => event.kind).join(', ') : 'no events'}`);
     if (events.length) {
       deps.runInBackground(
         (async () => {
