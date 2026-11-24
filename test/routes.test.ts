@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
+import { createApp } from '../src/routes.js';
 import type { AgentService } from '../src/agent/service.js';
 import type { WebhookEvent } from '../src/whatsapp/webhook.js';
 

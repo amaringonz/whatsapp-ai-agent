@@ -49,7 +49,7 @@ sequenceDiagram
 
 ```
 src/
-  app.ts               Hono routes: webhook verification, signed webhook, health
+  routes.ts            Hono routes: webhook verification, signed webhook, health
   index.ts             Vercel entry (uses waitUntil to answer Meta right away)
   server.ts            Local Node server
   agent/

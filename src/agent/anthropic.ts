@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { Anthropic } from '@anthropic-ai/sdk';
 import type { AssistantBlock, LanguageModel, ModelRequest, ModelResponse } from './types.js';
 
 export class AnthropicModel implements LanguageModel {
