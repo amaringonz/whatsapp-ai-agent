@@ -76,4 +76,28 @@ export class WhatsAppClient implements WhatsAppSender, MediaDownloader {
     const mimeType = (info.mime_type ?? file.headers.get('content-type') ?? 'application/octet-stream').split(';')[0]!.trim();
     return { data, mimeType };
   }
+
+  async graph(path: string): Promise<unknown> {
+    const request = this.options.fetch ?? fetch;
+    const response = await request(`https://graph.facebook.com/${this.options.version}/${path}`, {
+      headers: { Authorization: `Bearer ${this.options.token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`WhatsApp API ${response.status}: ${JSON.stringify(body)}`);
+    return body;
+  }
+
+  async status(businessAccountId?: string): Promise<Record<string, unknown>> {
+    const phone = await this.graph(
+      `${this.options.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,code_verification_status,platform_type,throughput`,
+    );
+    if (!businessAccountId) return { phone };
+    const [account, numbers, templates] = await Promise.all([
+      this.graph(`${businessAccountId}?fields=name,currency,timezone_id,message_template_namespace`),
+      this.graph(`${businessAccountId}/phone_numbers?fields=display_phone_number,verified_name,quality_rating`),
+      this.graph(`${businessAccountId}/message_templates?fields=name,status,category,language&limit=20`),
+    ]);
+    return { phone, account, numbers, templates };
+  }
 }

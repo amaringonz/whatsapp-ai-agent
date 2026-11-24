@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { createApp } from './routes.js';
 import { createAgent } from './bootstrap.js';
 import { readEnv } from './config/env.js';
+import { WhatsAppClient } from './whatsapp/client.js';
 import type { AgentService } from './agent/service.js';
 
 const env = readEnv();
@@ -14,6 +15,10 @@ const app = createApp({
   phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
   cronSecret: env.CRON_SECRET,
   adminToken: env.ADMIN_TOKEN,
+  whatsappStatus: () =>
+    new WhatsAppClient({ token: env.WHATSAPP_TOKEN, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID, version: env.GRAPH_API_VERSION }).status(
+      env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+    ),
   agent: () => (agent ??= createAgent(env)),
   runInBackground: (task) => {
     task.catch((error) => console.error(error));

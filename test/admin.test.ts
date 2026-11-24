@@ -62,4 +62,15 @@ describe('admin routes', () => {
     expect((await app.request(`/admin/chats/${contact}/reset`, { method: 'POST', headers: auth })).status).toBe(200);
     expect(await (await app.request(`/admin/chats/${contact}`, { headers: auth })).json()).toMatchObject({ history: [], state: {} });
   });
+
+  it('reports the WhatsApp configuration or the Meta error', async () => {
+    const make = (status: () => Promise<unknown>) =>
+      createApp({ verifyToken: 'v', appSecret: 's', adminToken: 'admin', whatsappStatus: status, agent: async () => setup().agent, runInBackground: () => undefined });
+    const ok = await make(async () => ({ phone: { verified_name: 'media0x' } })).request('/admin/whatsapp', { headers: auth });
+    expect(await ok.json()).toEqual({ phone: { verified_name: 'media0x' } });
+    const bad = await make(async () => {
+      throw new Error('WhatsApp API 401');
+    }).request('/admin/whatsapp', { headers: auth });
+    expect(bad.status).toBe(502);
+  });
 });

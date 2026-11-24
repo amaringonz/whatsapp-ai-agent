@@ -12,6 +12,7 @@ export interface AppDependencies {
   phoneNumberId?: string;
   cronSecret?: string;
   adminToken?: string;
+  whatsappStatus?: () => Promise<unknown>;
   agent: () => Promise<AgentService>;
   runInBackground: (task: Promise<unknown>) => void;
 }
@@ -32,6 +33,15 @@ export function createApp(deps: AppDependencies) {
     if (!deps.adminToken) return c.text('Admin routes are not configured', 503);
     if (!authorized(c.req.header('authorization'), deps.adminToken)) return c.text('Unauthorized', 401);
     await next();
+  });
+
+  app.get('/admin/whatsapp', async (c) => {
+    if (!deps.whatsappStatus) return c.text('Not available', 503);
+    try {
+      return c.json(await deps.whatsappStatus());
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+    }
   });
 
   app.get('/admin/chats/:contact', async (c) => c.json(await (await deps.agent()).inspect(c.req.param('contact'))));

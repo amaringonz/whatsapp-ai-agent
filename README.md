@@ -135,10 +135,11 @@ Every limit can be changed with an environment variable, and every customer-faci
 
 ## Admin routes
 
-With `ADMIN_TOKEN` set, three routes help you support customers and test the agent, all with `Authorization: Bearer <ADMIN_TOKEN>`:
+With `ADMIN_TOKEN` set, these routes help you support customers and test the agent, all with `Authorization: Bearer <ADMIN_TOKEN>`:
 
 | Method | Path | What it does |
 | --- | --- | --- |
+| GET | `/admin/whatsapp` | Checks the WhatsApp token: phone number, quality rating and, with `WHATSAPP_BUSINESS_ACCOUNT_ID`, the account and its templates |
 | GET | `/admin/chats/:contact` | Shows the saved history and state of a chat (paused, blocked, lead, ad) |
 | POST | `/admin/chats/:contact/resume` | Lifts a pause after a handoff, like replying `/bot` from the app |
 | POST | `/admin/chats/:contact/reset` | Starts the chat from scratch |
