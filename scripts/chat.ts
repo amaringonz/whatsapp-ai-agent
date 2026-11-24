@@ -15,7 +15,12 @@ const provider = process.env.AI_PROVIDER ?? (anthropicKey || !openaiKey ? 'anthr
 
 const model =
   provider === 'openai' && openaiKey
-    ? new OpenAIModel({ apiKey: openaiKey, model: process.env.OPENAI_MODEL ?? 'gpt-6.2-sol', baseUrl: process.env.OPENAI_BASE_URL })
+    ? new OpenAIModel({
+        apiKey: openaiKey,
+        model: process.env.OPENAI_MODEL ?? 'gpt-6.2-sol',
+        baseUrl: process.env.OPENAI_BASE_URL,
+        reasoningEffort: process.env.OPENAI_REASONING_EFFORT ?? 'none',
+      })
     : anthropicKey
       ? new AnthropicModel(anthropicKey, process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5-5')
       : undefined;

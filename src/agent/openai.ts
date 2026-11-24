@@ -121,6 +121,7 @@ export class OpenAIModel implements LanguageModel {
       model: string;
       baseUrl?: string;
       maxTokens?: number;
+      reasoningEffort?: string;
       attempts?: number;
       retryDelayMs?: number;
       fetch?: typeof fetch;
@@ -148,6 +149,7 @@ export class OpenAIModel implements LanguageModel {
       body: JSON.stringify({
         model: this.options.model,
         max_completion_tokens: this.options.maxTokens ?? 4096,
+        ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}),
         messages: toOpenAIMessages(request.system, request.messages),
         ...(request.tools.length
           ? {

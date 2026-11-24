@@ -90,7 +90,7 @@ describe('OpenAIModel', () => {
       return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: 'Listo' } }] }));
     }) as typeof fetch;
 
-    const model = new OpenAIModel({ apiKey: 'K', model: 'gpt-6.2-sol', fetch: fakeFetch });
+    const model = new OpenAIModel({ apiKey: 'K', model: 'gpt-6.2-sol', reasoningEffort: 'none', fetch: fakeFetch });
     const result = await model.respond({
       system: 'S',
       messages: [{ role: 'user', content: 'Hola' }],
@@ -102,6 +102,7 @@ describe('OpenAIModel', () => {
     expect(sent?.auth).toBe('Bearer K');
     expect(sent?.body).toMatchObject({
       model: 'gpt-6.2-sol',
+      reasoning_effort: 'none',
       tools: [{ type: 'function', function: { name: 'hand_off', description: 'd' } }],
     });
   });

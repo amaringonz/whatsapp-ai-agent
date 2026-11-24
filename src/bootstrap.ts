@@ -51,7 +51,12 @@ export async function createAgent(env: Env): Promise<AgentService> {
     booking,
     model:
       env.AI_PROVIDER === 'openai'
-        ? new OpenAIModel({ apiKey: env.OPENAI_API_KEY!, model: env.OPENAI_MODEL, baseUrl: env.OPENAI_BASE_URL })
+        ? new OpenAIModel({
+            apiKey: env.OPENAI_API_KEY!,
+            model: env.OPENAI_MODEL,
+            baseUrl: env.OPENAI_BASE_URL,
+            reasoningEffort: env.OPENAI_REASONING_EFFORT.trim() || undefined,
+          })
         : new AnthropicModel(env.ANTHROPIC_API_KEY!, env.ANTHROPIC_MODEL),
     whatsapp,
     media: new MediaReader({
