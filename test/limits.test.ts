@@ -263,7 +263,7 @@ describe('OpenAI retries', () => {
       const status = statuses[calls] ?? 200;
       calls += 1;
       return status === 200
-        ? new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: 'hola' } }] }))
+        ? new Response(JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'hola' }] }] }))
         : new Response('busy', { status });
     }) as typeof fetch;
     const model = new OpenAIModel({ apiKey: 'K', model: 'm', fetch: fakeFetch, retryDelayMs: 1 });

@@ -19,7 +19,7 @@ const model =
         apiKey: openaiKey,
         model: process.env.OPENAI_MODEL ?? 'gpt-6.2-sol',
         baseUrl: process.env.OPENAI_BASE_URL,
-        reasoningEffort: process.env.OPENAI_REASONING_EFFORT ?? 'none',
+        reasoningEffort: process.env.OPENAI_REASONING_EFFORT ?? 'low',
       })
     : anthropicKey
       ? new AnthropicModel(anthropicKey, process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5-5')

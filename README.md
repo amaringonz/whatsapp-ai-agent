@@ -64,7 +64,7 @@ src/
     prompt.ts          System prompt built from the business config
     tools.ts           hand_off, get_availability, book_appointment
     anthropic.ts       Claude adapter (prompt caching on the system prompt)
-    openai.ts          OpenAI Chat Completions adapter
+    openai.ts          OpenAI Responses API adapter
   media/               Photo, PDF and text-file reading; voice note transcription
   whatsapp/            Signature check, webhook parsing, Cloud API client and media download
   store/               Upstash Redis and in-memory conversation stores
@@ -152,7 +152,7 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp", origin?
 | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | yes | The model provider. With only an OpenAI key, OpenAI also transcribes voice notes |
 | `AI_PROVIDER` | no | `openai` or `anthropic`. Defaults to Anthropic when its key is set, otherwise OpenAI |
 | `OPENAI_MODEL`, `OPENAI_BASE_URL` | no | Defaults to `gpt-6.2-sol` on `https://api.openai.com/v1` |
-| `OPENAI_REASONING_EFFORT` | no | Defaults to `none`, which GPT-6.2 needs to use tools in Chat Completions. Leave it empty for models without reasoning |
+| `OPENAI_REASONING_EFFORT` | no | Defaults to `low`. Leave it empty for models without reasoning |
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5` |
 | `BUSINESS_CONFIG` or `BUSINESS_CONFIG_PATH` | yes | The business description |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` (or `KV_REST_API_*`) | production | Conversation memory; falls back to memory |

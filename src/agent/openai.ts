@@ -1,85 +1,82 @@
 import type { AssistantBlock, ChatMessage, CustomerBlock, LanguageModel, ModelRequest, ModelResponse, ToolResultBlock } from './types.js';
 
-type OpenAIContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } }
-  | { type: 'file'; file: { filename: string; file_data: string } };
+type InputContent =
+  | { type: 'input_text'; text: string }
+  | { type: 'input_image'; image_url: string }
+  | { type: 'input_file'; filename: string; file_data: string };
 
-type OpenAIMessage =
-  | { role: 'system'; content: string }
-  | { role: 'user'; content: string | OpenAIContentPart[] }
-  | {
-      role: 'assistant';
-      content: string | null;
-      tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
-    }
-  | { role: 'tool'; tool_call_id: string; content: string };
+type InputItem =
+  | { role: 'user'; content: InputContent[] }
+  | { role: 'assistant'; content: string }
+  | { type: 'function_call'; call_id: string; name: string; arguments: string }
+  | { type: 'function_call_output'; call_id: string; output: string };
 
-interface OpenAIResponse {
-  choices?: {
-    finish_reason?: string;
-    message?: {
-      content?: string | null;
-      refusal?: string | null;
-      tool_calls?: { id: string; type: string; function?: { name?: string; arguments?: string } }[];
-    };
-  }[];
+interface OutputItem {
+  type?: string;
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+  content?: { type?: string; text?: string; refusal?: string }[];
 }
 
-function customerPart(block: CustomerBlock): OpenAIContentPart {
-  if (block.type === 'text') return { type: 'text', text: block.text };
+interface OpenAIResponse {
+  status?: string;
+  output?: OutputItem[];
+  incomplete_details?: { reason?: string } | null;
+}
+
+function customerContent(block: CustomerBlock): InputContent {
+  if (block.type === 'text') return { type: 'input_text', text: block.text };
   if (block.type === 'image') {
-    return { type: 'image_url', image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` } };
+    return { type: 'input_image', image_url: `data:${block.source.media_type};base64,${block.source.data}` };
   }
   if (block.source.type === 'base64') {
     return {
-      type: 'file',
-      file: { filename: block.title ?? 'document.pdf', file_data: `data:application/pdf;base64,${block.source.data}` },
+      type: 'input_file',
+      filename: block.title ?? 'document.pdf',
+      file_data: `data:application/pdf;base64,${block.source.data}`,
     };
   }
-  return { type: 'text', text: `${block.title ? `File "${block.title}":\n` : ''}${block.source.data}` };
+  return { type: 'input_text', text: `${block.title ? `File "${block.title}":\n` : ''}${block.source.data}` };
 }
 
-export function toOpenAIMessages(system: string, history: ChatMessage[]): OpenAIMessage[] {
-  const messages: OpenAIMessage[] = [{ role: 'system', content: system }];
+export function toOpenAIInput(history: ChatMessage[]): InputItem[] {
+  const items: InputItem[] = [];
   for (const message of history) {
     if (message.role === 'user') {
       if (typeof message.content === 'string') {
-        messages.push({ role: 'user', content: message.content });
+        items.push({ role: 'user', content: [{ type: 'input_text', text: message.content }] });
         continue;
       }
       const blocks = message.content as (CustomerBlock | ToolResultBlock)[];
-      const results = blocks.filter((block): block is ToolResultBlock => block.type === 'tool_result');
-      for (const result of results) {
-        messages.push({
-          role: 'tool',
-          tool_call_id: result.tool_use_id,
-          content: result.is_error ? `Error: ${result.content}` : result.content,
+      for (const block of blocks) {
+        if (block.type !== 'tool_result') continue;
+        items.push({
+          type: 'function_call_output',
+          call_id: block.tool_use_id,
+          output: block.is_error ? `Error: ${block.content}` : block.content,
         });
       }
-      const parts = blocks.filter((block): block is CustomerBlock => block.type !== 'tool_result').map(customerPart);
-      if (parts.length) messages.push({ role: 'user', content: parts });
+      const content = blocks.filter((block): block is CustomerBlock => block.type !== 'tool_result').map(customerContent);
+      if (content.length) items.push({ role: 'user', content });
       continue;
     }
 
     if (typeof message.content === 'string') {
-      messages.push({ role: 'assistant', content: message.content });
+      items.push({ role: 'assistant', content: message.content });
       continue;
     }
     const text = message.content
       .filter((block) => block.type === 'text')
       .map((block) => block.text)
       .join('\n');
-    const calls = message.content
-      .filter((block) => block.type === 'tool_use')
-      .map((block) => ({
-        id: block.id,
-        type: 'function' as const,
-        function: { name: block.name, arguments: JSON.stringify(block.input ?? {}) },
-      }));
-    messages.push({ role: 'assistant', content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
+    if (text) items.push({ role: 'assistant', content: text });
+    for (const block of message.content) {
+      if (block.type !== 'tool_use') continue;
+      items.push({ type: 'function_call', call_id: block.id, name: block.name, arguments: JSON.stringify(block.input ?? {}) });
+    }
   }
-  return messages;
+  return items;
 }
 
 function parseArguments(value: string | undefined): unknown {
@@ -92,17 +89,22 @@ function parseArguments(value: string | undefined): unknown {
 }
 
 export function fromOpenAIResponse(response: OpenAIResponse): ModelResponse {
-  const choice = response.choices?.[0];
-  const message = choice?.message;
   const content: AssistantBlock[] = [];
-  const text = message?.content ?? message?.refusal;
-  if (text) content.push({ type: 'text', text });
-  for (const call of message?.tool_calls ?? []) {
-    if (call.type !== 'function' || !call.function?.name) continue;
-    content.push({ type: 'tool_use', id: call.id, name: call.function.name, input: parseArguments(call.function.arguments) });
+  const texts: string[] = [];
+  for (const item of response.output ?? []) {
+    if (item.type === 'message') {
+      for (const part of item.content ?? []) {
+        const value = part.type === 'output_text' ? part.text : part.type === 'refusal' ? part.refusal : undefined;
+        if (value) texts.push(value);
+      }
+    }
+    if (item.type === 'function_call' && item.call_id && item.name) {
+      content.push({ type: 'tool_use', id: item.call_id, name: item.name, input: parseArguments(item.arguments) });
+    }
   }
+  if (texts.length) content.unshift({ type: 'text', text: texts.join('\n') });
   const hasTools = content.some((block) => block.type === 'tool_use');
-  return { content, stopReason: hasTools ? 'tool_use' : (choice?.finish_reason ?? null) };
+  return { content, stopReason: hasTools ? 'tool_use' : (response.incomplete_details?.reason ?? response.status ?? null) };
 }
 
 export class OpenAIError extends Error {
@@ -143,19 +145,24 @@ export class OpenAIModel implements LanguageModel {
 
   private async request(request: ModelRequest): Promise<ModelResponse> {
     const send = this.options.fetch ?? fetch;
-    const response = await send(`${(this.options.baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`, {
+    const response = await send(`${(this.options.baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/responses`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.options.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: this.options.model,
-        max_completion_tokens: this.options.maxTokens ?? 4096,
-        ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}),
-        messages: toOpenAIMessages(request.system, request.messages),
+        instructions: request.system,
+        input: toOpenAIInput(request.messages),
+        max_output_tokens: this.options.maxTokens ?? 4096,
+        store: false,
+        ...(this.options.reasoningEffort ? { reasoning: { effort: this.options.reasoningEffort } } : {}),
         ...(request.tools.length
           ? {
               tools: request.tools.map((tool) => ({
                 type: 'function',
-                function: { name: tool.name, description: tool.description, parameters: tool.input_schema },
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.input_schema,
+                strict: false,
               })),
             }
           : {}),

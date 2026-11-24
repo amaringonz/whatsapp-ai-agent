@@ -18,7 +18,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: optional,
   OPENAI_MODEL: z.string().default('gpt-6.2-sol'),
   OPENAI_BASE_URL: z.string().default('https://api.openai.com/v1'),
-  OPENAI_REASONING_EFFORT: z.string().default('none'),
+  OPENAI_REASONING_EFFORT: z.string().default('low'),
 
   UPSTASH_REDIS_REST_URL: optional,
   UPSTASH_REDIS_REST_TOKEN: optional,

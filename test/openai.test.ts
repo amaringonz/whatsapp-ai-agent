@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromOpenAIResponse, OpenAIModel, toOpenAIMessages } from '../src/agent/openai.js';
+import { fromOpenAIResponse, OpenAIModel, toOpenAIInput } from '../src/agent/openai.js';
 import type { ChatMessage } from '../src/agent/types.js';
 import { readEnv } from '../src/config/env.js';
 
@@ -10,8 +10,8 @@ const base = {
   WHATSAPP_VERIFY_TOKEN: 'v',
 };
 
-describe('toOpenAIMessages', () => {
-  it('maps text, photos, PDFs, tool calls and tool results', () => {
+describe('toOpenAIInput', () => {
+  it('maps text, photos, PDFs, tool calls and tool results to Responses API items', () => {
     const history: ChatMessage[] = [
       {
         role: 'user',
@@ -33,39 +33,31 @@ describe('toOpenAIMessages', () => {
       { role: 'assistant', content: 'No hay espacios' },
     ];
 
-    expect(toOpenAIMessages('SYSTEM', history)).toEqual([
-      { role: 'system', content: 'SYSTEM' },
+    expect(toOpenAIInput(history)).toEqual([
       {
         role: 'user',
         content: [
-          { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
-          { type: 'text', text: '[Photo from the customer]' },
-          { type: 'file', file: { filename: 'menu.pdf', file_data: 'data:application/pdf;base64,BBB' } },
-          { type: 'text', text: 'File "notas.txt":\nhola' },
+          { type: 'input_image', image_url: 'data:image/png;base64,AAA' },
+          { type: 'input_text', text: '[Photo from the customer]' },
+          { type: 'input_file', filename: 'menu.pdf', file_data: 'data:application/pdf;base64,BBB' },
+          { type: 'input_text', text: 'File "notas.txt":\nhola' },
         ],
       },
-      {
-        role: 'assistant',
-        content: 'Déjame revisar',
-        tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_availability', arguments: '{}' } }],
-      },
-      { role: 'tool', tool_call_id: 'call_1', content: '{"days":[]}' },
+      { role: 'assistant', content: 'Déjame revisar' },
+      { type: 'function_call', call_id: 'call_1', name: 'get_availability', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: '{"days":[]}' },
       { role: 'assistant', content: 'No hay espacios' },
     ]);
   });
 });
 
 describe('fromOpenAIResponse', () => {
-  it('turns tool calls into tool_use blocks', () => {
+  it('turns function calls into tool_use blocks and skips reasoning items', () => {
     const response = fromOpenAIResponse({
-      choices: [
-        {
-          finish_reason: 'tool_calls',
-          message: {
-            content: null,
-            tool_calls: [{ id: 'call_9', type: 'function', function: { name: 'hand_off', arguments: '{"reason":"urgent"}' } }],
-          },
-        },
+      status: 'completed',
+      output: [
+        { type: 'reasoning' },
+        { type: 'function_call', call_id: 'call_9', name: 'hand_off', arguments: '{"reason":"urgent"}' },
       ],
     });
     expect(response).toEqual({
@@ -75,22 +67,21 @@ describe('fromOpenAIResponse', () => {
   });
 
   it('returns plain text replies', () => {
-    expect(fromOpenAIResponse({ choices: [{ finish_reason: 'stop', message: { content: 'Hola' } }] })).toEqual({
-      content: [{ type: 'text', text: 'Hola' }],
-      stopReason: 'stop',
-    });
+    expect(
+      fromOpenAIResponse({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: 'Hola' }] }] }),
+    ).toEqual({ content: [{ type: 'text', text: 'Hola' }], stopReason: 'completed' });
   });
 });
 
 describe('OpenAIModel', () => {
-  it('calls chat completions with the tools as functions', async () => {
+  it('calls the Responses API with instructions, reasoning and function tools', async () => {
     let sent: { url: string; body: Record<string, unknown>; auth: string | null } | undefined;
     const fakeFetch = (async (url: string, init?: RequestInit) => {
       sent = { url, body: JSON.parse(String(init?.body)), auth: new Headers(init?.headers).get('authorization') };
-      return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: 'Listo' } }] }));
+      return new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: 'Listo' }] }] }));
     }) as typeof fetch;
 
-    const model = new OpenAIModel({ apiKey: 'K', model: 'gpt-6.2-sol', reasoningEffort: 'none', fetch: fakeFetch });
+    const model = new OpenAIModel({ apiKey: 'K', model: 'gpt-6.2-sol', reasoningEffort: 'low', fetch: fakeFetch });
     const result = await model.respond({
       system: 'S',
       messages: [{ role: 'user', content: 'Hola' }],
@@ -98,12 +89,15 @@ describe('OpenAIModel', () => {
     });
 
     expect(result.content).toEqual([{ type: 'text', text: 'Listo' }]);
-    expect(sent?.url).toBe('https://api.openai.com/v1/chat/completions');
+    expect(sent?.url).toBe('https://api.openai.com/v1/responses');
     expect(sent?.auth).toBe('Bearer K');
     expect(sent?.body).toMatchObject({
       model: 'gpt-6.2-sol',
-      reasoning_effort: 'none',
-      tools: [{ type: 'function', function: { name: 'hand_off', description: 'd' } }],
+      instructions: 'S',
+      store: false,
+      reasoning: { effort: 'low' },
+      input: [{ role: 'user', content: [{ type: 'input_text', text: 'Hola' }] }],
+      tools: [{ type: 'function', name: 'hand_off', description: 'd' }],
     });
   });
 
