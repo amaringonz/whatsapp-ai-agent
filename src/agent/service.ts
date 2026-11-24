@@ -198,10 +198,12 @@ export class AgentService {
     if (!message) return;
 
     await this.options.store.queueMessage(event.from, event.id, message);
-    await this.options.whatsapp.markReadAndTyping(event.id).catch((error) => console.warn('Typing indicator failed', error));
+    const conversation = await this.options.store.load(event.from);
+    if (!this.paused(conversation)) {
+      await this.options.whatsapp.markReadAndTyping(event.id).catch((error) => console.warn('Typing indicator failed', error));
+    }
 
     if (event.name || event.ad) {
-      const conversation = await this.options.store.load(event.from);
       let changed = false;
       if (event.name && conversation.state.name !== event.name) {
         conversation.state.name = event.name;
@@ -242,6 +244,30 @@ export class AgentService {
       }
     }
     await this.options.store.save(contact, conversation);
+  }
+
+  async inspect(contact: string): Promise<Conversation & { blocked: boolean; paused: boolean }> {
+    const conversation = await this.options.store.load(contact);
+    return {
+      state: conversation.state,
+      history: stripAttachments(conversation.history),
+      blocked: await this.isBlocked(contact),
+      paused: this.paused(conversation),
+    };
+  }
+
+  async resume(contact: string): Promise<void> {
+    const conversation = await this.options.store.load(contact);
+    conversation.state.pausedUntil = undefined;
+    conversation.state.pauseReason = undefined;
+    await this.options.store.save(contact, conversation);
+    await this.options.store.clearFlag(`error:${contact}`);
+  }
+
+  async reset(contact: string): Promise<void> {
+    await this.options.store.save(contact, { history: [], state: {} });
+    await this.options.store.unschedule(FOLLOW_UPS, contact);
+    await this.options.store.clearFlag(`bookings:full:${contact}`);
   }
 
   private paused(conversation: Conversation): boolean {

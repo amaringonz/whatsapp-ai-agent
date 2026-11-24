@@ -11,6 +11,7 @@ export interface AppDependencies {
   appSecret: string;
   phoneNumberId?: string;
   cronSecret?: string;
+  adminToken?: string;
   agent: () => Promise<AgentService>;
   runInBackground: (task: Promise<unknown>) => void;
 }
@@ -21,11 +22,33 @@ export function createApp(deps: AppDependencies) {
   app.get('/', (c) => c.json({ name: 'whatsapp-ai-agent', ok: true }));
   app.get('/health', (c) => c.json({ ok: true }));
 
+  const authorized = (header: string | undefined, secret: string) => {
+    const given = Buffer.from(header ?? '');
+    const expected = Buffer.from(`Bearer ${secret}`);
+    return given.length === expected.length && timingSafeEqual(given, expected);
+  };
+
+  app.use('/admin/*', async (c, next) => {
+    if (!deps.adminToken) return c.text('Admin routes are not configured', 503);
+    if (!authorized(c.req.header('authorization'), deps.adminToken)) return c.text('Unauthorized', 401);
+    await next();
+  });
+
+  app.get('/admin/chats/:contact', async (c) => c.json(await (await deps.agent()).inspect(c.req.param('contact'))));
+
+  app.post('/admin/chats/:contact/resume', async (c) => {
+    await (await deps.agent()).resume(c.req.param('contact'));
+    return c.json({ ok: true });
+  });
+
+  app.post('/admin/chats/:contact/reset', async (c) => {
+    await (await deps.agent()).reset(c.req.param('contact'));
+    return c.json({ ok: true });
+  });
+
   app.get('/cron/follow-ups', async (c) => {
     if (!deps.cronSecret) return c.text('Follow-ups are not configured', 503);
-    const given = Buffer.from(c.req.header('authorization') ?? '');
-    const expected = Buffer.from(`Bearer ${deps.cronSecret}`);
-    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return c.text('Unauthorized', 401);
+    if (!authorized(c.req.header('authorization'), deps.cronSecret)) return c.text('Unauthorized', 401);
     const sent = await (await deps.agent()).runFollowUps();
     console.info(`Follow-ups sent: ${sent}`);
     return c.json({ sent });

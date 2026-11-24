@@ -40,6 +40,7 @@ const envSchema = z.object({
   NOTIFY_EMAIL_TO: optional,
 
   CRON_SECRET: optional,
+  ADMIN_TOKEN: optional,
   FOLLOW_UP_HOURS: z.coerce.number().min(0).default(4),
   FOLLOW_UP_START_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   FOLLOW_UP_END_HOUR: z.coerce.number().int().min(1).max(24).default(20),

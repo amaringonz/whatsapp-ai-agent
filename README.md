@@ -131,6 +131,16 @@ See [`examples/business.example.json`](examples/business.example.json) for a ful
 
 Every limit can be changed with an environment variable, and every customer-facing note can be written in your own words under `fallbacks` in the business config.
 
+## Admin routes
+
+With `ADMIN_TOKEN` set, three routes help you support customers and test the agent, all with `Authorization: Bearer <ADMIN_TOKEN>`:
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| GET | `/admin/chats/:contact` | Shows the saved history and state of a chat (paused, blocked, lead, ad) |
+| POST | `/admin/chats/:contact/resume` | Lifts a pause after a handoff, like replying `/bot` from the app |
+| POST | `/admin/chats/:contact/reset` | Starts the chat from scratch |
+
 ## Booking API contract
 
 Booking is optional. When `BOOKING_API_URL` and `BOOKING_API_TOKEN` are set, the agent calls two endpoints with `Authorization: Bearer <token>`:
@@ -160,6 +170,7 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp", origin?
 | `TRANSCRIPTION_API_KEY` | no | Enables voice notes. Uses `OPENAI_API_KEY` when transcribing with OpenAI. Without a key the agent asks the customer to write instead |
 | `TRANSCRIPTION_BASE_URL`, `TRANSCRIPTION_MODEL` | no | Any OpenAI-compatible `/audio/transcriptions` API. Defaults to OpenAI `gpt-4o-mini-transcribe`; for Groq use `https://api.groq.com/openai/v1` and `whisper-large-v3-turbo` |
 | `RESEND_API_KEY`, `NOTIFY_EMAIL_FROM`, `NOTIFY_EMAIL_TO` | no | Handoff emails; falls back to logs |
+| `ADMIN_TOKEN` | no | Enables the [admin routes](#admin-routes) |
 | `CRON_SECRET` | no | Enables follow-ups. Vercel Cron calls `/cron/follow-ups` every 15 minutes with it (see `vercel.json`) |
 | `FOLLOW_UP_HOURS`, `FOLLOW_UP_START_HOUR`, `FOLLOW_UP_END_HOUR` | no | Defaults `4`, `8` and `20`, in the business time zone. `0` hours turns follow-ups off |
 | `WHATSAPP_BUSINESS_ACCOUNT_ID` | no | Enables ad conversion events for chats that came from Click-to-WhatsApp ads |
