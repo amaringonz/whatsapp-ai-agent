@@ -12,8 +12,12 @@ const envSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: z.string().min(1),
   GRAPH_API_VERSION: z.string().default('v26.0'),
 
-  ANTHROPIC_API_KEY: z.string().min(1),
+  AI_PROVIDER: z.enum(['anthropic', 'openai']).optional().catch(undefined),
+  ANTHROPIC_API_KEY: optional,
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-5-5'),
+  OPENAI_API_KEY: optional,
+  OPENAI_MODEL: z.string().default('gpt-6.2-sol'),
+  OPENAI_BASE_URL: z.string().default('https://api.openai.com/v1'),
 
   UPSTASH_REDIS_REST_URL: optional,
   UPSTASH_REDIS_REST_TOKEN: optional,
@@ -39,10 +43,25 @@ const envSchema = z.object({
   HISTORY_LIMIT: z.coerce.number().int().min(6).default(40),
 });
 
-export type Env = z.infer<typeof envSchema>;
+const resolvedSchema = envSchema
+  .transform((env) => {
+    const provider = env.AI_PROVIDER ?? (env.ANTHROPIC_API_KEY || !env.OPENAI_API_KEY ? 'anthropic' : 'openai');
+    const usesOpenAITranscription = env.TRANSCRIPTION_BASE_URL.replace(/\/$/, '') === 'https://api.openai.com/v1';
+    return {
+      ...env,
+      AI_PROVIDER: provider,
+      TRANSCRIPTION_API_KEY: env.TRANSCRIPTION_API_KEY ?? (usesOpenAITranscription ? env.OPENAI_API_KEY : undefined),
+    };
+  })
+  .superRefine((env, context) => {
+    const key = env.AI_PROVIDER === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
+    if (!env[key]) context.addIssue({ code: 'custom', path: [key], message: `Required when AI_PROVIDER is ${env.AI_PROVIDER}` });
+  });
+
+export type Env = z.infer<typeof resolvedSchema>;
 
 export function readEnv(source: Record<string, string | undefined> = process.env): Env {
-  const result = envSchema.safeParse(source);
+  const result = resolvedSchema.safeParse(source);
   if (!result.success) {
     throw new Error(`Invalid environment:\n${z.prettifyError(result.error)}`);
   }

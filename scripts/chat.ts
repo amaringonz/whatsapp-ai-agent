@@ -1,15 +1,25 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { AnthropicModel } from '../src/agent/anthropic.js';
+import { OpenAIModel } from '../src/agent/openai.js';
 import { AgentService } from '../src/agent/service.js';
 import { HttpBookingProvider } from '../src/booking/http.js';
 import { loadBusinessConfig } from '../src/config/business.js';
 import { ConsoleNotifier } from '../src/notify/resend.js';
 import { MemoryStore } from '../src/store/memory.js';
 
-const apiKey = process.env.ANTHROPIC_API_KEY;
 const configPath = process.argv[2] ?? process.env.BUSINESS_CONFIG_PATH ?? 'examples/business.example.json';
-if (!apiKey) throw new Error('Set ANTHROPIC_API_KEY to chat with the agent.');
+const anthropicKey = process.env.ANTHROPIC_API_KEY;
+const openaiKey = process.env.OPENAI_API_KEY;
+const provider = process.env.AI_PROVIDER ?? (anthropicKey || !openaiKey ? 'anthropic' : 'openai');
+
+const model =
+  provider === 'openai' && openaiKey
+    ? new OpenAIModel({ apiKey: openaiKey, model: process.env.OPENAI_MODEL ?? 'gpt-6.2-sol', baseUrl: process.env.OPENAI_BASE_URL })
+    : anthropicKey
+      ? new AnthropicModel(anthropicKey, process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5-5')
+      : undefined;
+if (!model) throw new Error('Set OPENAI_API_KEY or ANTHROPIC_API_KEY to chat with the agent.');
 
 const config = await loadBusinessConfig({ path: configPath });
 const contact = '50600000000';
@@ -18,7 +28,7 @@ let counter = 0;
 const agent = new AgentService({
   config,
   store: new MemoryStore(),
-  model: new AnthropicModel(apiKey, process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-5-5'),
+  model,
   notifier: new ConsoleNotifier(),
   booking:
     process.env.BOOKING_API_URL && process.env.BOOKING_API_TOKEN

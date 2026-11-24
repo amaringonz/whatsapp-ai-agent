@@ -5,10 +5,10 @@
 
 A business-specific AI agent for WhatsApp. It answers customers like a careful team member, qualifies leads, books appointments and **hands the conversation to a human only when the job is done or something needs a person**.
 
-Built with TypeScript, [Hono](https://hono.dev), the [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) and [Claude](https://docs.claude.com). Runs on Vercel with Upstash Redis.
+Built with TypeScript, [Hono](https://hono.dev) and the [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api). It runs on [Claude](https://docs.claude.com) or [OpenAI](https://developers.openai.com), deploys to Vercel and keeps conversations in Upstash Redis.
 
 ```
-Customer ──▶ WhatsApp ──▶ /webhook ──▶ Agent (Claude + tools) ──▶ WhatsApp reply
+Customer ──▶ WhatsApp ──▶ /webhook ──▶ Agent (LLM + tools) ──▶ WhatsApp reply
                                          │
                                          ├─ get_availability / book_appointment ──▶ your booking API
                                          └─ hand_off ──▶ email to the owner, agent goes quiet
@@ -17,7 +17,8 @@ Customer ──▶ WhatsApp ──▶ /webhook ──▶ Agent (Claude + tools) 
 ## What it does
 
 - **Answers in the customer's language**, in short WhatsApp-style messages, using only what the business wrote in its config. It never invents prices, dates or promises.
-- **Reads photos, PDFs and voice notes.** Photos and PDFs go to Claude as images and documents; voice notes are transcribed with any OpenAI-compatible speech-to-text API (OpenAI, Groq and others). Attachments are only sent on the turn they arrive, so the saved history stays small. Locations and shared contacts arrive as text; videos and unsupported files get a polite request for another format.
+- **Works with Claude or OpenAI.** One OpenAI key is enough for everything: conversation, photos, PDFs and voice notes.
+- **Reads photos, PDFs and voice notes.** Photos and PDFs go to the model as images and documents; voice notes are transcribed with any OpenAI-compatible speech-to-text API (OpenAI, Groq and others). Attachments are only sent on the turn they arrive, so the saved history stays small. Locations and shared contacts arrive as text; videos and unsupported files get a polite request for another format.
 - **Waits for the customer to finish typing.** Several quick messages are answered together, with read receipts and a typing indicator.
 - **Books appointments** through a small HTTP contract, so it works with any calendar or backend.
 - **Hands off with context.** When the goal is reached or a case is urgent, the owner gets an email with a summary, the lead details and the transcript, and the agent stops answering in that chat.
@@ -59,6 +60,7 @@ src/
     prompt.ts          System prompt built from the business config
     tools.ts           hand_off, get_availability, book_appointment
     anthropic.ts       Claude adapter (prompt caching on the system prompt)
+    openai.ts          OpenAI Chat Completions adapter
   media/               Photo, PDF and text-file reading; voice note transcription
   whatsapp/            Signature check, webhook parsing, Cloud API client and media download
   store/               Upstash Redis and in-memory conversation stores
@@ -77,7 +79,7 @@ cp .env.example .env            # fill in the values you have
 npm test                        # no keys or network needed
 
 # Talk to the agent in your terminal with the example business
-ANTHROPIC_API_KEY=... npm run chat -- examples/business.example.json
+OPENAI_API_KEY=... npm run chat -- examples/business.example.json   # or ANTHROPIC_API_KEY
 ```
 
 In the terminal chat, `/owner <text>` simulates you writing from the WhatsApp Business app and `/bot` hands the chat back to the agent.
@@ -125,12 +127,14 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, wher
 | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | yes | Cloud API access |
 | `WHATSAPP_APP_SECRET` | yes | Verifies `X-Hub-Signature-256` on every webhook |
 | `WHATSAPP_VERIFY_TOKEN` | yes | Any string; repeat it when you register the webhook |
-| `ANTHROPIC_API_KEY` | yes | Claude |
+| `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | yes | The model provider. With only an OpenAI key, OpenAI also transcribes voice notes |
+| `AI_PROVIDER` | no | `openai` or `anthropic`. Defaults to Anthropic when its key is set, otherwise OpenAI |
+| `OPENAI_MODEL`, `OPENAI_BASE_URL` | no | Defaults to `gpt-6.2-sol` on `https://api.openai.com/v1` |
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5` |
 | `BUSINESS_CONFIG` or `BUSINESS_CONFIG_PATH` | yes | The business description |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` (or `KV_REST_API_*`) | production | Conversation memory; falls back to memory |
 | `BOOKING_API_URL`, `BOOKING_API_TOKEN` | no | Enables booking tools |
-| `TRANSCRIPTION_API_KEY` | no | Enables voice notes. Without it the agent asks the customer to write instead |
+| `TRANSCRIPTION_API_KEY` | no | Enables voice notes. Uses `OPENAI_API_KEY` when transcribing with OpenAI. Without a key the agent asks the customer to write instead |
 | `TRANSCRIPTION_BASE_URL`, `TRANSCRIPTION_MODEL` | no | Any OpenAI-compatible `/audio/transcriptions` API. Defaults to OpenAI `gpt-4o-mini-transcribe`; for Groq use `https://api.groq.com/openai/v1` and `whisper-large-v3-turbo` |
 | `RESEND_API_KEY`, `NOTIFY_EMAIL_FROM`, `NOTIFY_EMAIL_TO` | no | Handoff emails; falls back to logs |
 | `DEBOUNCE_MS` | no | Wait for more messages, default `4000` |
@@ -146,7 +150,7 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, wher
 
 ## Testing
 
-`npm test` runs the suite with a scripted model, so it needs no keys or network. It covers signature checks, webhook parsing, media reading and transcription, prompt building, history trimming, debouncing, booking, handoff, human takeover, pause expiry and tool failures. `npm run typecheck` runs the TypeScript compiler in strict mode.
+`npm test` runs the suite with a scripted model, so it needs no keys or network. It covers signature checks, webhook parsing, media reading and transcription, both model adapters, prompt building, history trimming, debouncing, booking, handoff, human takeover, pause expiry and tool failures. `npm run typecheck` runs the TypeScript compiler in strict mode.
 
 ## License
 

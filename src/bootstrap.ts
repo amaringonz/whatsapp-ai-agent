@@ -1,4 +1,5 @@
 import { AnthropicModel } from './agent/anthropic.js';
+import { OpenAIModel } from './agent/openai.js';
 import { AgentService } from './agent/service.js';
 import { HttpBookingProvider } from './booking/http.js';
 import { loadBusinessConfig } from './config/business.js';
@@ -47,7 +48,10 @@ export async function createAgent(env: Env): Promise<AgentService> {
     store,
     notifier,
     booking,
-    model: new AnthropicModel(env.ANTHROPIC_API_KEY, env.ANTHROPIC_MODEL),
+    model:
+      env.AI_PROVIDER === 'openai'
+        ? new OpenAIModel({ apiKey: env.OPENAI_API_KEY!, model: env.OPENAI_MODEL, baseUrl: env.OPENAI_BASE_URL })
+        : new AnthropicModel(env.ANTHROPIC_API_KEY!, env.ANTHROPIC_MODEL),
     whatsapp,
     media: new MediaReader({ downloader: whatsapp, transcriber, language: config.business.language }),
     debounceMs: env.DEBOUNCE_MS,
