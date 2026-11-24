@@ -18,7 +18,7 @@ export class AnthropicModel implements LanguageModel {
       max_tokens: this.maxTokens,
       system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
       tools: request.tools,
-      messages: request.messages,
+      messages: request.messages as Anthropic.MessageParam[],
     });
 
     const content: AssistantBlock[] = [];

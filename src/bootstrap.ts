@@ -67,6 +67,7 @@ export async function createAgent(env: Env): Promise<AgentService> {
       maxAudioSeconds: env.MAX_AUDIO_SECONDS,
     }),
     blockedNumbers: env.BLOCKED_NUMBERS?.split(',') ?? [],
+    mediaMemoryTurns: env.MEDIA_MEMORY_TURNS,
     followUp:
       env.CRON_SECRET && env.FOLLOW_UP_HOURS > 0
         ? { afterHours: env.FOLLOW_UP_HOURS, startHour: env.FOLLOW_UP_START_HOUR, endHour: env.FOLLOW_UP_END_HOUR, windowHours: 23 }

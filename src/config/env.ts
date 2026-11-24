@@ -59,6 +59,7 @@ const envSchema = z.object({
   MAX_TURN_CHARS: z.coerce.number().int().positive().default(4000),
   MAX_MESSAGE_AGE_MINUTES: z.coerce.number().int().positive().default(360),
   MAX_PDF_PAGES: z.coerce.number().int().positive().default(20),
+  MEDIA_MEMORY_TURNS: z.coerce.number().int().min(0).default(5),
   MAX_AUDIO_SECONDS: z.coerce.number().int().positive().default(300),
 
   DEBOUNCE_MS: z.coerce.number().int().min(0).default(4000),

@@ -27,6 +27,7 @@ interface OpenAIResponse {
 
 function customerContent(block: CustomerBlock): InputContent {
   if (block.type === 'text') return { type: 'input_text', text: block.text };
+  if (block.type === 'media_ref') return { type: 'input_text', text: '[A file the customer sent earlier is no longer attached]' };
   if (block.type === 'image') {
     return { type: 'input_image', image_url: `data:${block.source.media_type};base64,${block.source.data}` };
   }

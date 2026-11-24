@@ -8,7 +8,7 @@ import { buildSystemPrompt, splitReply } from './prompt.js';
 import { runAgent, transcript, trimHistory } from './run.js';
 import { toolSpecs, type HandoffRequest } from './tools.js';
 import { isCustomerTurn, type AssistantBlock, type ChatMessage, type CustomerBlock, type LanguageModel } from './types.js';
-import { stripAttachments, type MediaReader } from '../media/reader.js';
+import { forModel, stripAttachments, type MediaReader } from '../media/reader.js';
 import type { QueuedMessage } from '../store/types.js';
 import type { ConversionSender } from '../conversions/messaging.js';
 import type { BookingOrigin } from '../booking/types.js';
@@ -68,6 +68,7 @@ export interface AgentServiceOptions {
   limits?: Partial<AgentLimits>;
   blockedNumbers?: string[];
   followUp?: FollowUpSettings;
+  mediaMemoryTurns?: number;
   conversions?: ConversionSender;
   debounceMs: number;
   humanPauseHours: number;
@@ -390,6 +391,11 @@ export class AgentService {
       .catch((notifyError) => console.error('Error notification failed', notifyError));
   }
 
+  private async withMedia(history: ChatMessage[]): Promise<ChatMessage[]> {
+    const turns = this.options.mediaMemoryTurns ?? 5;
+    return this.options.media && turns > 0 ? this.options.media.hydrate(history, turns) : history;
+  }
+
   private origin(conversation: Conversation): BookingOrigin | undefined {
     const ad = conversation.state.ad;
     if (!ad) return undefined;
@@ -464,9 +470,10 @@ export class AgentService {
 
     const messages = normalizeHistory(trimHistory(conversation.history, historyLimit));
     messages.push({ role: 'user', content: followUpNote });
+    const prepared = await this.withMedia(messages);
     const response = await model.respond({
       system: buildSystemPrompt(config, { now: this.now(), contactName: state.name, lead: state.lead }),
-      messages,
+      messages: forModel(prepared),
       tools: [],
     });
     const text = response.content
@@ -486,7 +493,7 @@ export class AgentService {
 
   private async reply(contact: string, conversation: Conversation, covering = false): Promise<void> {
     const { config, model, booking, whatsapp, notifier, store, historyLimit, humanPauseHours } = this.options;
-    const history = normalizeHistory(trimHistory(conversation.history, historyLimit));
+    const history = await this.withMedia(normalizeHistory(trimHistory(conversation.history, historyLimit)));
     let handoff: HandoffRequest | undefined;
 
     const turn = await runAgent({

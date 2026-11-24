@@ -1,4 +1,4 @@
-import type { CustomerBlock, DocumentBlock, ImageMediaType, TextBlock } from '../agent/types.js';
+import { isCustomerTurn, type ChatMessage, type CustomerBlock, type DocumentBlock, type ImageMediaType, type TextBlock } from '../agent/types.js';
 import type { QueuedMessage } from '../store/types.js';
 import { MediaTooLargeError, type MediaDownloader } from '../whatsapp/client.js';
 import type { MediaRef } from '../whatsapp/webhook.js';
@@ -79,6 +79,39 @@ export class MediaReader {
     }
   }
 
+  async reattach(media: MediaRef): Promise<CustomerBlock | undefined> {
+    if (!this.options.downloader) return undefined;
+    try {
+      return (await this.readMedia(media))?.find((block) => block.type === 'image' || block.type === 'document');
+    } catch (error) {
+      console.warn(`Could not reattach ${media.type} ${media.id}`, error);
+      return undefined;
+    }
+  }
+
+  async hydrate(history: ChatMessage[], turns: number): Promise<ChatMessage[]> {
+    const customerTurns = history.map((message, index) => (isCustomerTurn(message) ? index : -1)).filter((index) => index >= 0);
+    const recent = new Set(customerTurns.slice(-turns));
+    const result: ChatMessage[] = [];
+    for (const [index, message] of history.entries()) {
+      if (message.role !== 'user' || !Array.isArray(message.content) || !isCustomerTurn(message)) {
+        result.push(message);
+        continue;
+      }
+      const blocks: CustomerBlock[] = [];
+      for (const block of message.content as CustomerBlock[]) {
+        if (block.type !== 'media_ref') {
+          blocks.push(block);
+          continue;
+        }
+        const attached = recent.has(index) ? await this.reattach(block.media) : undefined;
+        blocks.push(attached ?? detachedNote(block.media.type, block.media.filename));
+      }
+      result.push({ role: 'user', content: blocks });
+    }
+    return result;
+  }
+
   private async readMedia(media: MediaRef): Promise<CustomerBlock[] | undefined> {
     switch (media.type) {
       case 'image':
@@ -98,7 +131,7 @@ export class MediaReader {
     const type = mime(file.mimeType) ?? '';
     if (!IMAGE_TYPES.has(type)) return undefined;
     return [
-      { type: 'image', source: { type: 'base64', media_type: type as ImageMediaType, data: base64(file.data) } },
+      { type: 'image', source: { type: 'base64', media_type: type as ImageMediaType, data: base64(file.data) }, ref: media },
       text(`[Photo from the customer${quoted(media.caption)}]`),
     ];
   }
@@ -129,6 +162,7 @@ export class MediaReader {
     }
     if (!document) return undefined;
     if (title) document.title = title;
+    document.ref = media;
     return [document, label];
   }
 
@@ -142,19 +176,41 @@ export class MediaReader {
   }
 }
 
+function detachedNote(type: string, title?: string): TextBlock {
+  if (type === 'image' || type === 'sticker') return text('[The photo is no longer attached]');
+  return text(`[The document${title ? ` "${title}"` : ''} is no longer attached]`);
+}
+
 export function stripAttachments<T extends { role: string; content: unknown }>(history: T[]): T[] {
   return history.map((message) => {
     if (message.role !== 'user' || !Array.isArray(message.content)) return message;
-    const blocks = message.content as { type: string }[];
+    const blocks = message.content as CustomerBlock[];
     if (!blocks.some((block) => block.type === 'image' || block.type === 'document')) return message;
     const replaced: CustomerBlock[] = blocks.map((block) => {
-      if (block.type === 'image') return text('[The photo is no longer attached]');
-      if (block.type === 'document') {
-        const title = (block as DocumentBlock).title;
-        return text(`[The document${title ? ` "${title}"` : ''} is no longer attached]`);
+      if (block.type === 'image' || block.type === 'document') {
+        if (block.ref) return { type: 'media_ref', media: block.ref };
+        return detachedNote(block.type, block.type === 'document' ? (block as DocumentBlock).title : undefined);
       }
-      return block as CustomerBlock;
+      return block;
     });
     return { ...message, content: compact(replaced) };
+  });
+}
+
+export function forModel(history: ChatMessage[]): ChatMessage[] {
+  return history.map((message) => {
+    if (message.role !== 'user' || !Array.isArray(message.content)) return message;
+    const blocks = (message.content as { type: string }[]).map((block) => {
+      if (block.type === 'media_ref') {
+        const media = (block as unknown as { media: MediaRef }).media;
+        return detachedNote(media.type, media.filename);
+      }
+      if (block.type === 'image' || block.type === 'document') {
+        const { ref: _ref, ...rest } = block as CustomerBlock & { ref?: MediaRef };
+        return rest;
+      }
+      return block;
+    });
+    return { ...message, content: blocks } as ChatMessage;
   });
 }

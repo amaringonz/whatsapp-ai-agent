@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AgentService } from '../src/agent/service.js';
 import type { AssistantBlock, ChatMessage, LanguageModel, ModelRequest, ModelResponse } from '../src/agent/types.js';
 import { parseBusinessConfig } from '../src/config/business.js';
-import { MediaReader, stripAttachments } from '../src/media/reader.js';
+import { forModel, MediaReader, stripAttachments } from '../src/media/reader.js';
 import { OpenAICompatibleTranscriber, type Transcriber } from '../src/media/transcriber.js';
 import { MemoryStore } from '../src/store/memory.js';
 import { toQueuedMessage } from '../src/store/types.js';
@@ -85,7 +85,11 @@ describe('MediaReader', () => {
     ]);
     expect(content).toEqual([
       { type: 'text', text: 'Hola' },
-      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: Buffer.from('jpg').toString('base64') } },
+      {
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: Buffer.from('jpg').toString('base64') },
+        ref: { type: 'image', id: 'IMG1', mimeType: 'image/jpeg', caption: 'Mi logo' },
+      },
       { type: 'text', text: '[Photo from the customer: "Mi logo"]' },
     ]);
   });
@@ -179,6 +183,53 @@ describe('stripAttachments', () => {
   });
 });
 
+describe('media memory', () => {
+  it('keeps showing a file for the next customer messages and then lets it go', async () => {
+    const downloader = new FakeDownloader({ PDF1: { data: bytes('%PDF'), mimeType: 'application/pdf' } });
+    const reader = new MediaReader({ downloader });
+    const history: ChatMessage[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'media_ref', media: { type: 'document', id: 'PDF1', mimeType: 'application/pdf', filename: 'entrada.pdf' } },
+          { type: 'text', text: '[Document from the customer "entrada.pdf"]' },
+        ],
+      },
+      { role: 'assistant', content: 'Es una entrada' },
+      { role: 'user', content: '¿Qué número tiene?' },
+    ];
+
+    const recent = await reader.hydrate(history, 5);
+    expect(recent[0]?.content).toMatchObject([
+      { type: 'document', title: 'entrada.pdf', source: { type: 'base64', media_type: 'application/pdf' } },
+      { type: 'text' },
+    ]);
+
+    const old = await reader.hydrate(history, 1);
+    expect(old[0]?.content).toEqual([
+      { type: 'text', text: '[The document "entrada.pdf" is no longer attached]' },
+      { type: 'text', text: '[Document from the customer "entrada.pdf"]' },
+    ]);
+    expect(downloader.calls).toEqual(['PDF1']);
+  });
+
+  it('removes internal references before the model sees the history', () => {
+    const cleaned = forModel([
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'A' }, ref: { type: 'image', id: 'I' } },
+          { type: 'media_ref', media: { type: 'image', id: 'OLD' } },
+        ],
+      },
+    ]);
+    expect(cleaned[0]?.content).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'A' } },
+      { type: 'text', text: '[The photo is no longer attached]' },
+    ]);
+  });
+});
+
 describe('queued messages', () => {
   it('reads the old plain text queue entries and the new ones', () => {
     expect(toQueuedMessage('Hola')).toEqual({ text: 'Hola' });
@@ -226,8 +277,15 @@ describe('AgentService with media', () => {
     expect(JSON.stringify(lastUser)).toContain('"type":"image"');
 
     const saved = await store.load('506');
-    expect(JSON.stringify(saved.history)).not.toContain('"type":"image"');
-    expect(saved.history[0]).toEqual({ role: 'user', content: '[The photo is no longer attached]\n[Photo from the customer]' });
+    expect(JSON.stringify(saved.history)).not.toContain('"source"');
+    expect(saved.history[0]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'media_ref', media: { type: 'image', id: 'IMG1', mimeType: 'image/png' } },
+        { type: 'text', text: '[Photo from the customer]' },
+      ],
+    });
+    expect(JSON.stringify(requests[0]?.messages)).not.toContain('"ref"');
   });
 });
 

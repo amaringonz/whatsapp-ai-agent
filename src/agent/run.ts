@@ -1,3 +1,4 @@
+import { forModel } from '../media/reader.js';
 import { runTool, type ToolContext } from './tools.js';
 import { isCustomerTurn, type AssistantBlock, type ChatMessage, type LanguageModel, type ToolResultBlock, type ToolSpec } from './types.js';
 
@@ -21,7 +22,7 @@ export async function runAgent(options: {
   for (let step = 0; step < maxSteps; step += 1) {
     const response = await options.model.respond({
       system: options.system,
-      messages: history,
+      messages: forModel(history),
       tools: options.tools,
     });
 

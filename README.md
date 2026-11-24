@@ -18,7 +18,7 @@ Customer ──▶ WhatsApp ──▶ /webhook ──▶ Agent (LLM + tools) ─
 
 - **Answers in the customer's language**, in short WhatsApp-style messages, using only what the business wrote in its config. It never invents prices, dates or promises.
 - **Works with Claude or OpenAI.** One OpenAI key is enough for everything: conversation, photos, PDFs and voice notes.
-- **Reads photos, PDFs and voice notes.** Photos and PDFs go to the model as images and documents; voice notes are transcribed with any OpenAI-compatible speech-to-text API (OpenAI, Groq and others). Attachments are only sent on the turn they arrive, so the saved history stays small. Locations and shared contacts arrive as text; videos and unsupported files get a polite request for another format.
+- **Reads photos, PDFs and voice notes.** Photos and PDFs go to the model as images and documents; voice notes are transcribed with any OpenAI-compatible speech-to-text API (OpenAI, Groq and others). The saved history keeps only a reference to each file, and files are attached again for the next customer messages (`MEDIA_MEMORY_TURNS`, default 5), so the agent can still answer about them without storing them. Locations and shared contacts arrive as text; videos and unsupported files get a polite request for another format.
 - **Waits for the customer to finish typing.** Several quick messages are answered together, with read receipts and a typing indicator.
 - **Books appointments** through a small HTTP contract, so it works with any calendar or backend.
 - **Follows up once.** If a customer goes quiet before booking, the agent sends one short, contextual follow-up a few hours later, only during business hours and only inside WhatsApp's 24-hour customer service window.
@@ -182,6 +182,7 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp", origin?
 | `LIMIT_MEDIA_PER_DAY`, `LIMIT_BOOKINGS_PER_WEEK` | no | Per contact, defaults `8` and `2` |
 | `LIMIT_REPLIES_PER_DAY` | no | All chats together, default `1500` |
 | `MAX_MESSAGE_CHARS`, `MAX_TURN_CHARS` | no | Defaults `1500` and `4000` |
+| `MEDIA_MEMORY_TURNS` | no | How many customer messages a photo or PDF stays visible to the agent, default `5`. `0` shows it only once |
 | `MAX_MESSAGE_AGE_MINUTES`, `MAX_PDF_PAGES`, `MAX_AUDIO_SECONDS` | no | Defaults `360`, `20` and `300` |
 | `DEBOUNCE_MS` | no | Wait for more messages, default `4000` |
 | `HUMAN_PAUSE_HOURS` | no | How long the agent stays quiet after a handoff or a human reply, default `24` |

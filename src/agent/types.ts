@@ -1,3 +1,5 @@
+import type { MediaRef } from '../whatsapp/webhook.js';
+
 export interface TextBlock {
   type: 'text';
   text: string;
@@ -22,6 +24,7 @@ export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/w
 export interface ImageBlock {
   type: 'image';
   source: { type: 'base64'; media_type: ImageMediaType; data: string };
+  ref?: MediaRef;
 }
 
 export interface DocumentBlock {
@@ -30,9 +33,15 @@ export interface DocumentBlock {
   source:
     | { type: 'base64'; media_type: 'application/pdf'; data: string }
     | { type: 'text'; media_type: 'text/plain'; data: string };
+  ref?: MediaRef;
 }
 
-export type CustomerBlock = TextBlock | ImageBlock | DocumentBlock;
+export interface MediaRefBlock {
+  type: 'media_ref';
+  media: MediaRef;
+}
+
+export type CustomerBlock = TextBlock | ImageBlock | DocumentBlock | MediaRefBlock;
 
 export type AssistantBlock = TextBlock | ToolUseBlock;
 
