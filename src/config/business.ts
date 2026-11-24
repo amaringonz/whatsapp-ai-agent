@@ -44,6 +44,13 @@ export const businessConfigSchema = z.object({
   handoff: z.object({
     completed: z.string().min(1),
     urgent: z.array(z.string().min(1)).min(1),
+    ownerHours: z
+      .object({
+        days: z.array(z.number().int().min(0).max(6)).min(1),
+        start: z.string().regex(/^\d{2}:\d{2}$/),
+        end: z.string().regex(/^\d{2}:\d{2}$/),
+      })
+      .optional(),
   }),
   fallbacks: z
     .object({

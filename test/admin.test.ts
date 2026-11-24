@@ -5,7 +5,8 @@ import { parseBusinessConfig } from '../src/config/business.js';
 import { createApp } from '../src/routes.js';
 import { MemoryStore } from '../src/store/memory.js';
 
-const config = parseBusinessConfig(JSON.parse(readFileSync('examples/business.example.json', 'utf8')));
+const example = JSON.parse(readFileSync('examples/business.example.json', 'utf8'));
+const config = parseBusinessConfig({ ...example, handoff: { ...example.handoff, ownerHours: undefined } });
 const contact = '50688887777';
 
 function setup() {

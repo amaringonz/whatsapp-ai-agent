@@ -199,7 +199,7 @@ export class AgentService {
 
     await this.options.store.queueMessage(event.from, event.id, message);
     const conversation = await this.options.store.load(event.from);
-    if (!this.paused(conversation)) {
+    if (!this.paused(conversation) || this.covering(conversation)) {
       await this.options.whatsapp.markReadAndTyping(event.id).catch((error) => console.warn('Typing indicator failed', error));
     }
 
@@ -270,6 +270,27 @@ export class AgentService {
     await this.options.store.clearFlag(`bookings:full:${contact}`);
   }
 
+  ownerAway(at = this.now().getTime()): boolean {
+    const hours = this.options.config.handoff.ownerHours;
+    if (!hours) return false;
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: this.options.config.business.timezone,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(at));
+    const read = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+    const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(read('weekday'));
+    const time = `${read('hour').padStart(2, '0')}:${read('minute').padStart(2, '0')}`;
+    return !hours.days.includes(day) || time < hours.start || time >= hours.end;
+  }
+
+  private covering(conversation: Conversation): boolean {
+    const { state } = conversation;
+    return this.paused(conversation) && state.pauseReason === 'handoff' && state.lastHandoff !== 'limit' && this.ownerAway();
+  }
+
   private paused(conversation: Conversation): boolean {
     return Boolean(conversation.state.pausedUntil && conversation.state.pausedUntil > this.now().getTime());
   }
@@ -286,7 +307,8 @@ export class AgentService {
         conversation.state.lastCustomerAt = this.now().getTime();
         conversation.state.followUpsSent = 0;
         await store.unschedule(FOLLOW_UPS, contact);
-        if (this.paused(conversation)) {
+        const covering = this.covering(conversation);
+        if (this.paused(conversation) && !covering) {
           conversation.history.push({ role: 'user', content: queued.map((item) => item.text).join('\n') });
           await store.save(contact, conversation);
           return;
@@ -311,7 +333,7 @@ export class AgentService {
           : items.map((item) => item.text).join('\n');
         conversation.history.push({ role: 'user', content });
         try {
-          await this.reply(contact, conversation);
+          await this.reply(contact, conversation, covering);
         } catch (error) {
           await this.failed(contact, conversation, error);
         }
@@ -462,7 +484,7 @@ export class AgentService {
     return true;
   }
 
-  private async reply(contact: string, conversation: Conversation): Promise<void> {
+  private async reply(contact: string, conversation: Conversation, covering = false): Promise<void> {
     const { config, model, booking, whatsapp, notifier, store, historyLimit, humanPauseHours } = this.options;
     const history = normalizeHistory(trimHistory(conversation.history, historyLimit));
     let handoff: HandoffRequest | undefined;
@@ -473,9 +495,12 @@ export class AgentService {
         now: this.now(),
         contactName: conversation.state.name,
         lead: conversation.state.lead,
+        ...(covering
+          ? { covering: { reason: conversation.state.lastHandoff, summary: conversation.state.handoffSummary } }
+          : {}),
       }),
       history,
-      tools: toolSpecs(config, Boolean(booking)),
+      tools: toolSpecs(config, Boolean(booking)).filter((tool) => !covering || tool.name !== 'hand_off'),
       context: {
         contact,
         config,
@@ -507,7 +532,7 @@ export class AgentService {
       await whatsapp.sendText(contact, message);
     }
 
-    if (this.options.followUp && !handoff && !conversation.state.booked) {
+    if (this.options.followUp && !handoff && !covering && !conversation.state.booked) {
       await store.schedule(FOLLOW_UPS, contact, this.now().getTime() + this.options.followUp.afterHours * 3_600_000);
     }
 
@@ -515,6 +540,7 @@ export class AgentService {
       conversation.state.pausedUntil = this.now().getTime() + humanPauseHours * 3_600_000;
       conversation.state.pauseReason = 'handoff';
       conversation.state.lastHandoff = handoff.reason;
+      conversation.state.handoffSummary = handoff.summary.slice(0, 600);
       await notifier
         .notify({
           reason: handoff.reason,

@@ -27,6 +27,7 @@ export interface ConversationState {
   pauseReason?: 'handoff' | 'human_reply';
   lead?: Record<string, string>;
   lastHandoff?: string;
+  handoffSummary?: string;
   lastCustomerAt?: number;
   followUpsSent?: number;
   booked?: boolean;

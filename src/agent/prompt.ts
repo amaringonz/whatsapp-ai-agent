@@ -17,7 +17,12 @@ function localNow(timezone: string, now: Date): string {
 
 export function buildSystemPrompt(
   config: BusinessConfig,
-  context: { now: Date; contactName?: string; lead?: Record<string, string> },
+  context: {
+    now: Date;
+    contactName?: string;
+    lead?: Record<string, string>;
+    covering?: { reason?: string; summary?: string };
+  },
 ): string {
   const { business, assistant, booking } = config;
   const bookingOn = booking?.enabled === true;
@@ -87,6 +92,16 @@ export function buildSystemPrompt(
       '- out_of_scope: the customer needs an answer you do not have.',
       'Write the summary for the owner: who they are, what they need, what was agreed and what is pending.',
     ]),
+
+    context.covering
+      ? section('Covering while the owner is away', [
+          `This conversation was already passed to ${assistant.owner}${context.covering.reason ? ` (reason: ${context.covering.reason})` : ''}, who is outside working hours right now. Keep helping with everything you can answer from what is written above, including booking.`,
+          context.covering.summary && `What is pending for ${assistant.owner}: ${context.covering.summary}`,
+          `- For the pending item, or anything you do not know, say kindly that you cannot answer that right now and that ${assistant.owner} has it as a priority and will reply here soon.`,
+          '- Do not hand off again and do not promise a specific time.',
+          '- Keep following every rule above, including not continuing personal topics or topics outside the business.',
+        ])
+      : '',
 
     section('What you know about this customer', [
       context.contactName && `WhatsApp name: ${context.contactName}`,

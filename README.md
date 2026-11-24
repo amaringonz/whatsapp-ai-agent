@@ -24,6 +24,7 @@ Customer ──▶ WhatsApp ──▶ /webhook ──▶ Agent (LLM + tools) ─
 - **Follows up once.** If a customer goes quiet before booking, the agent sends one short, contextual follow-up a few hours later, only during business hours and only inside WhatsApp's 24-hour customer service window.
 - **Measures Click-to-WhatsApp ads.** It keeps the ad and click id from the first message, sends them with the booking, and reports the booking to Meta through the [Conversions API for Business Messaging](https://developers.facebook.com/docs/marketing-api/conversions-api/business-messaging), so Ads Manager can attribute appointments to ads.
 - **Hands off with context.** When the goal is reached or a case is urgent, the owner gets an email with a summary, the lead details and the transcript, and the agent stops answering in that chat.
+- **Covers for the owner after hours.** With `handoff.ownerHours` set, a chat that was handed off keeps getting answers outside those hours: the agent helps with everything it knows and says the pending question is a priority for the owner. During working hours, or once the owner replies, it stays quiet.
 - **Steps aside when a human writes.** With [WhatsApp Coexistence](https://developers.facebook.com/docs/whatsapp/embedded-signup/onboarding-business-app-users), messages sent from the WhatsApp Business app pause the agent for that chat. Replying `/bot` from the app hands it back.
 - **Stays in scope.** It only talks about the business, which keeps it within WhatsApp's 2026 policy for AI on the Business Platform: business-specific assistants are allowed, general-purpose chatbots are not.
 - **Is honest about being an assistant** when someone asks.
@@ -101,7 +102,8 @@ Everything the agent knows comes from one JSON file, validated with Zod. Keep re
   "rules": ["Never give prices", "..."],
   "handoff": {
     "completed": "When the goal counts as done",
-    "urgent": ["Situations that need a person right away"]
+    "urgent": ["Situations that need a person right away"],
+    "ownerHours": { "days": [1, 2, 3, 4, 5], "start": "08:00", "end": "18:00" }
   },
   "fallbacks": { "error": "...", "busy": "...", "limit": "..." },
   "booking": {
