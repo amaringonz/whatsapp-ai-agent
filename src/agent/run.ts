@@ -1,5 +1,5 @@
 import { runTool, type ToolContext } from './tools.js';
-import type { AssistantBlock, ChatMessage, LanguageModel, ToolResultBlock, ToolSpec } from './types.js';
+import { isCustomerTurn, type AssistantBlock, type ChatMessage, type LanguageModel, type ToolResultBlock, type ToolSpec } from './types.js';
 
 export interface AgentTurn {
   history: ChatMessage[];
@@ -62,9 +62,9 @@ export function trimHistory(history: ChatMessage[], limit: number): ChatMessage[
   if (history.length <= limit) return history;
   for (let index = history.length - limit; index < history.length; index += 1) {
     const message = history[index];
-    if (message?.role === 'user' && typeof message.content === 'string') return history.slice(index);
+    if (isCustomerTurn(message)) return history.slice(index);
   }
-  const lastUser = history.findLastIndex((message) => message.role === 'user' && typeof message.content === 'string');
+  const lastUser = history.findLastIndex((message) => isCustomerTurn(message));
   return lastUser >= 0 ? history.slice(lastUser) : [];
 }
 
@@ -73,6 +73,12 @@ export function transcript(history: ChatMessage[], business: string, limit = 20)
     .flatMap((message) => {
       if (typeof message.content === 'string') {
         return [`${message.role === 'user' ? 'Customer' : business}: ${message.content}`];
+      }
+      if (isCustomerTurn(message)) {
+        const said = (message.content as { type: string; text?: string; title?: string }[])
+          .map((block) => (block.type === 'text' ? block.text : block.type === 'image' ? '[photo]' : `[document${block.title ? ` ${block.title}` : ''}]`))
+          .join('\n');
+        return [`Customer: ${said}`];
       }
       if (message.role === 'assistant') {
         return message.content

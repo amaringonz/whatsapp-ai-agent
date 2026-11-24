@@ -26,6 +26,10 @@ const envSchema = z.object({
   BOOKING_API_URL: optional,
   BOOKING_API_TOKEN: optional,
 
+  TRANSCRIPTION_API_KEY: optional,
+  TRANSCRIPTION_BASE_URL: z.string().default('https://api.openai.com/v1'),
+  TRANSCRIPTION_MODEL: z.string().default('gpt-4o-mini-transcribe'),
+
   RESEND_API_KEY: optional,
   NOTIFY_EMAIL_FROM: optional,
   NOTIFY_EMAIL_TO: optional,

@@ -17,6 +17,7 @@ Customer ──▶ WhatsApp ──▶ /webhook ──▶ Agent (Claude + tools) 
 ## What it does
 
 - **Answers in the customer's language**, in short WhatsApp-style messages, using only what the business wrote in its config. It never invents prices, dates or promises.
+- **Reads photos, PDFs and voice notes.** Photos and PDFs go to Claude as images and documents; voice notes are transcribed with any OpenAI-compatible speech-to-text API (OpenAI, Groq and others). Attachments are only sent on the turn they arrive, so the saved history stays small. Locations and shared contacts arrive as text; videos and unsupported files get a polite request for another format.
 - **Waits for the customer to finish typing.** Several quick messages are answered together, with read receipts and a typing indicator.
 - **Books appointments** through a small HTTP contract, so it works with any calendar or backend.
 - **Hands off with context.** When the goal is reached or a case is urgent, the owner gets an email with a summary, the lead details and the transcript, and the agent stops answering in that chat.
@@ -58,7 +59,8 @@ src/
     prompt.ts          System prompt built from the business config
     tools.ts           hand_off, get_availability, book_appointment
     anthropic.ts       Claude adapter (prompt caching on the system prompt)
-  whatsapp/            Signature check, webhook parsing, Cloud API client
+  media/               Photo, PDF and text-file reading; voice note transcription
+  whatsapp/            Signature check, webhook parsing, Cloud API client and media download
   store/               Upstash Redis and in-memory conversation stores
   booking/             HTTP booking provider
   notify/              Resend email and console notifiers
@@ -72,7 +74,7 @@ test/                  Vitest suite with a scripted model
 ```bash
 npm install
 cp .env.example .env            # fill in the values you have
-npm test                        # 22 tests, no network needed
+npm test                        # no keys or network needed
 
 # Talk to the agent in your terminal with the example business
 ANTHROPIC_API_KEY=... npm run chat -- examples/business.example.json
@@ -128,6 +130,8 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, wher
 | `BUSINESS_CONFIG` or `BUSINESS_CONFIG_PATH` | yes | The business description |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` (or `KV_REST_API_*`) | production | Conversation memory; falls back to memory |
 | `BOOKING_API_URL`, `BOOKING_API_TOKEN` | no | Enables booking tools |
+| `TRANSCRIPTION_API_KEY` | no | Enables voice notes. Without it the agent asks the customer to write instead |
+| `TRANSCRIPTION_BASE_URL`, `TRANSCRIPTION_MODEL` | no | Any OpenAI-compatible `/audio/transcriptions` API. Defaults to OpenAI `gpt-4o-mini-transcribe`; for Groq use `https://api.groq.com/openai/v1` and `whisper-large-v3-turbo` |
 | `RESEND_API_KEY`, `NOTIFY_EMAIL_FROM`, `NOTIFY_EMAIL_TO` | no | Handoff emails; falls back to logs |
 | `DEBOUNCE_MS` | no | Wait for more messages, default `4000` |
 | `HUMAN_PAUSE_HOURS` | no | How long the agent stays quiet after a handoff or a human reply, default `24` |
@@ -142,7 +146,7 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, wher
 
 ## Testing
 
-`npm test` runs the suite with a scripted model, so it needs no keys or network. It covers signature checks, webhook parsing, prompt building, history trimming, debouncing, booking, handoff, human takeover, pause expiry and tool failures. `npm run typecheck` runs the TypeScript compiler in strict mode.
+`npm test` runs the suite with a scripted model, so it needs no keys or network. It covers signature checks, webhook parsing, media reading and transcription, prompt building, history trimming, debouncing, booking, handoff, human takeover, pause expiry and tool failures. `npm run typecheck` runs the TypeScript compiler in strict mode.
 
 ## License
 

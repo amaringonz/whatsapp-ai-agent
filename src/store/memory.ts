@@ -1,8 +1,8 @@
-import { emptyConversation, type Conversation, type ConversationStore } from './types.js';
+import { emptyConversation, type Conversation, type ConversationStore, type QueuedMessage } from './types.js';
 
 export class MemoryStore implements ConversationStore {
   private readonly events = new Set<string>();
-  private readonly queues = new Map<string, string[]>();
+  private readonly queues = new Map<string, QueuedMessage[]>();
   private readonly latest = new Map<string, string>();
   private readonly locks = new Set<string>();
   private readonly conversations = new Map<string, string>();
@@ -13,8 +13,8 @@ export class MemoryStore implements ConversationStore {
     return true;
   }
 
-  async queueMessage(contact: string, messageId: string, text: string): Promise<void> {
-    this.queues.set(contact, [...(this.queues.get(contact) ?? []), text]);
+  async queueMessage(contact: string, messageId: string, message: QueuedMessage): Promise<void> {
+    this.queues.set(contact, [...(this.queues.get(contact) ?? []), structuredClone(message)]);
     this.latest.set(contact, messageId);
   }
 
@@ -22,7 +22,7 @@ export class MemoryStore implements ConversationStore {
     return this.latest.get(contact) ?? null;
   }
 
-  async takeQueued(contact: string): Promise<string[]> {
+  async takeQueued(contact: string): Promise<QueuedMessage[]> {
     const queued = this.queues.get(contact) ?? [];
     this.queues.delete(contact);
     return queued;

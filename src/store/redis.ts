@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { emptyConversation, type Conversation, type ConversationStore } from './types.js';
+import { emptyConversation, toQueuedMessage, type Conversation, type ConversationStore, type QueuedMessage } from './types.js';
 
 const DAY = 86_400;
 
@@ -22,10 +22,10 @@ export class RedisStore implements ConversationStore {
     return (await this.redis.set(this.key('event', id), 1, { nx: true, ex: 2 * DAY })) === 'OK';
   }
 
-  async queueMessage(contact: string, messageId: string, text: string): Promise<void> {
+  async queueMessage(contact: string, messageId: string, message: QueuedMessage): Promise<void> {
     await this.redis
       .multi()
-      .rpush(this.key('queue', contact), text)
+      .rpush(this.key('queue', contact), JSON.stringify(message))
       .expire(this.key('queue', contact), DAY)
       .set(this.key('latest', contact), messageId, { ex: DAY })
       .exec();
@@ -35,13 +35,13 @@ export class RedisStore implements ConversationStore {
     return this.redis.get<string>(this.key('latest', contact));
   }
 
-  async takeQueued(contact: string): Promise<string[]> {
+  async takeQueued(contact: string): Promise<QueuedMessage[]> {
     const [queued] = await this.redis
       .multi()
-      .lrange<string>(this.key('queue', contact), 0, -1)
+      .lrange<unknown>(this.key('queue', contact), 0, -1)
       .del(this.key('queue', contact))
-      .exec<[string[], number]>();
-    return queued ?? [];
+      .exec<[unknown[], number]>();
+    return (queued ?? []).map(toQueuedMessage);
   }
 
   async lock(contact: string, seconds: number): Promise<boolean> {

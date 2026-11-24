@@ -138,7 +138,7 @@ describe('AgentService', () => {
 
   it('answers several quick messages together, once', async () => {
     const { agent, sent, model, store } = setup([[{ type: 'text', text: 'Claro' }]]);
-    await store.queueMessage(contact, 'm0', 'Hola');
+    await store.queueMessage(contact, 'm0', { text: 'Hola' });
     await agent.handle(inbound('m1', '¿tienen espacio mañana?'));
     expect(sent).toEqual(['Claro']);
     expect(model.requests[0]?.messages.at(-1)).toEqual({ role: 'user', content: 'Hola\n¿tienen espacio mañana?' });

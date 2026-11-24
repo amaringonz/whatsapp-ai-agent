@@ -17,11 +17,33 @@ export interface ToolResultBlock {
   is_error?: boolean;
 }
 
+export type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+export interface ImageBlock {
+  type: 'image';
+  source: { type: 'base64'; media_type: ImageMediaType; data: string };
+}
+
+export interface DocumentBlock {
+  type: 'document';
+  title?: string;
+  source:
+    | { type: 'base64'; media_type: 'application/pdf'; data: string }
+    | { type: 'text'; media_type: 'text/plain'; data: string };
+}
+
+export type CustomerBlock = TextBlock | ImageBlock | DocumentBlock;
+
 export type AssistantBlock = TextBlock | ToolUseBlock;
 
 export type ChatMessage =
-  | { role: 'user'; content: string | ToolResultBlock[] }
+  | { role: 'user'; content: string | CustomerBlock[] | ToolResultBlock[] }
   | { role: 'assistant'; content: string | AssistantBlock[] };
+
+export function isCustomerTurn(message: ChatMessage | undefined): boolean {
+  if (message?.role !== 'user') return false;
+  return typeof message.content === 'string' || !message.content.some((block) => block.type === 'tool_result');
+}
 
 export interface ToolSpec {
   name: string;

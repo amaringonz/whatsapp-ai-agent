@@ -38,6 +38,13 @@ export function buildSystemPrompt(
       `- ${assistant.disclosure}`,
     ]),
 
+    section('Photos, files and voice notes', [
+      '- Customers can send photos, PDFs and voice notes. You see photos and PDFs directly. Voice notes reach you transcribed, marked [Voice note, transcribed]; treat them as if the customer had typed them.',
+      '- Use what you see to help: read screenshots, references, menus, logos or quotes the customer sends, and mention the detail that matters in one line.',
+      '- When a note in brackets says you could not open something, say so naturally and ask for it another way. Never pretend you saw or heard something you did not.',
+      '- Never describe people in photos beyond what the conversation needs.',
+    ]),
+
     section('Scope', [
       `- Only talk about ${business.name}, its services and the customer's needs related to them.`,
       '- If asked for anything unrelated (homework, general questions, jokes, code), decline kindly in one line and bring the conversation back to how the business can help.',

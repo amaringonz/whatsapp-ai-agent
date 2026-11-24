@@ -7,7 +7,8 @@ import type { WebhookEvent } from '../whatsapp/webhook.js';
 import { buildSystemPrompt, splitReply } from './prompt.js';
 import { runAgent, transcript, trimHistory } from './run.js';
 import { toolSpecs, type HandoffRequest } from './tools.js';
-import type { AssistantBlock, ChatMessage, LanguageModel } from './types.js';
+import { isCustomerTurn, type AssistantBlock, type ChatMessage, type CustomerBlock, type LanguageModel } from './types.js';
+import { stripAttachments, type MediaReader } from '../media/reader.js';
 
 export const RESUME_COMMAND = '/bot';
 
@@ -18,6 +19,7 @@ export interface AgentServiceOptions {
   model: LanguageModel;
   notifier: Notifier;
   booking?: BookingProvider;
+  media?: MediaReader;
   debounceMs: number;
   humanPauseHours: number;
   historyLimit: number;
@@ -27,29 +29,35 @@ export interface AgentServiceOptions {
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const asCustomerBlocks = (content: string | CustomerBlock[]): CustomerBlock[] =>
+  typeof content === 'string' ? [{ type: 'text', text: content }] : content;
+
 export function normalizeHistory(history: ChatMessage[]): ChatMessage[] {
   const result: ChatMessage[] = [];
   for (const message of history) {
     if (!result.length && message.role === 'assistant') continue;
     const last = result.at(-1);
-    if (last?.role === 'user' && message.role === 'user' && (typeof last.content !== 'string' || typeof message.content !== 'string')) {
+    if (last?.role === 'user' && message.role === 'user') {
+      if (isCustomerTurn(last) && isCustomerTurn(message)) {
+        const before = last.content as string | CustomerBlock[];
+        const after = message.content as string | CustomerBlock[];
+        last.content =
+          typeof before === 'string' && typeof after === 'string'
+            ? `${before}\n${after}`
+            : [...asCustomerBlocks(before), ...structuredClone(asCustomerBlocks(after))];
+        continue;
+      }
       result.push({ role: 'assistant', content: '(no reply)' });
       result.push(structuredClone(message));
       continue;
     }
-    if (last && last.role === message.role) {
-      if (last.role === 'user' && typeof last.content === 'string' && typeof message.content === 'string') {
-        last.content = `${last.content}\n${message.content}`;
+    if (last?.role === 'assistant' && message.role === 'assistant') {
+      const toBlocks = (content: string | AssistantBlock[]): AssistantBlock[] =>
+        typeof content === 'string' ? [{ type: 'text', text: content }] : content;
+      const merged = [...toBlocks(last.content), ...toBlocks(message.content)];
+      if (!merged.some((block) => block.type === 'tool_use')) {
+        last.content = merged;
         continue;
-      }
-      if (last.role === 'assistant' && message.role === 'assistant') {
-        const toBlocks = (content: string | AssistantBlock[]): AssistantBlock[] =>
-          typeof content === 'string' ? [{ type: 'text', text: content }] : content;
-        const merged = [...toBlocks(last.content), ...toBlocks(message.content)];
-        if (!merged.some((block) => block.type === 'tool_use')) {
-          last.content = merged;
-          continue;
-        }
       }
     }
     result.push(structuredClone(message));
@@ -70,7 +78,7 @@ export class AgentService {
     if (!(await this.options.store.claimEvent(event.id))) return;
     if (event.kind === 'echo') return this.handleEcho(event.to, event.text);
 
-    await this.options.store.queueMessage(event.from, event.id, event.text);
+    await this.options.store.queueMessage(event.from, event.id, { text: event.text, ...(event.media ? { media: event.media } : {}) });
     await this.options.whatsapp.markReadAndTyping(event.id).catch((error) => console.warn('Typing indicator failed', error));
 
     if (event.name) {
@@ -114,13 +122,16 @@ export class AgentService {
         if (!queued.length) return;
 
         const conversation = await store.load(contact);
-        conversation.history.push({ role: 'user', content: queued.join('\n') });
-
         if (this.paused(conversation)) {
+          conversation.history.push({ role: 'user', content: queued.map((item) => item.text).join('\n') });
           await store.save(contact, conversation);
           return;
         }
 
+        const content = this.options.media
+          ? await this.options.media.read(queued)
+          : queued.map((item) => item.text).join('\n');
+        conversation.history.push({ role: 'user', content });
         await this.reply(contact, conversation);
       }
     } finally {
@@ -155,7 +166,7 @@ export class AgentService {
       },
     });
 
-    conversation.history = turn.history;
+    conversation.history = stripAttachments(turn.history);
     for (const message of splitReply(turn.reply)) {
       await whatsapp.sendText(contact, message);
     }

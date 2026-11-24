@@ -1,3 +1,13 @@
+export type MediaType = 'image' | 'audio' | 'document' | 'video' | 'sticker';
+
+export interface MediaRef {
+  type: MediaType;
+  id: string;
+  mimeType?: string;
+  filename?: string;
+  caption?: string;
+}
+
 export interface InboundMessage {
   kind: 'inbound';
   id: string;
@@ -5,6 +15,7 @@ export interface InboundMessage {
   name?: string;
   timestamp: number;
   text: string;
+  media?: MediaRef;
 }
 
 export interface BusinessEcho {
@@ -16,6 +27,13 @@ export interface BusinessEcho {
 }
 
 export type WebhookEvent = InboundMessage | BusinessEcho;
+
+interface RawMedia {
+  id?: string;
+  mime_type?: string;
+  caption?: string;
+  filename?: string;
+}
 
 interface RawMessage {
   id?: string;
@@ -29,10 +47,13 @@ interface RawMessage {
     button_reply?: { title?: string };
     list_reply?: { title?: string; description?: string };
   };
-  location?: { name?: string; address?: string };
-  image?: { caption?: string };
-  video?: { caption?: string };
-  document?: { caption?: string; filename?: string };
+  location?: { name?: string; address?: string; latitude?: number; longitude?: number };
+  image?: RawMedia;
+  audio?: RawMedia;
+  video?: RawMedia;
+  sticker?: RawMedia;
+  document?: RawMedia;
+  contacts?: { name?: { formatted_name?: string }; phones?: { phone?: string }[] }[];
   referral?: { headline?: string; body?: string; source_url?: string };
 }
 
@@ -58,22 +79,50 @@ export function describeMessage(message: RawMessage): string {
     case 'interactive':
       return message.interactive?.button_reply?.title ?? message.interactive?.list_reply?.title ?? '';
     case 'audio':
-      return '[The customer sent a voice note that you cannot listen to]';
+      return '[The customer sent a voice note you could not listen to. Ask them kindly to write it.]';
     case 'image':
-      return `[The customer sent an image you cannot see${caption(message.image?.caption)}]`;
+      return `[The customer sent an image you could not open${caption(message.image?.caption)}]`;
     case 'video':
-      return `[The customer sent a video you cannot watch${caption(message.video?.caption)}]`;
+      return `[The customer sent a video you cannot watch${caption(message.video?.caption)}. Ask them to tell you what it shows or send a photo.]`;
     case 'document':
-      return `[The customer sent a document${caption(message.document?.filename)}]`;
+      return `[The customer sent a file you could not open${caption(message.document?.filename)}${message.document?.caption ? ` with the note "${message.document.caption}"` : ''}. Ask them to send it as a PDF or a photo, or to tell you what it says.]`;
     case 'sticker':
       return '[The customer sent a sticker]';
-    case 'location':
-      return `[The customer shared a location${caption(message.location?.name ?? message.location?.address)}]`;
+    case 'location': {
+      const place = [message.location?.name, message.location?.address].filter(Boolean).join(', ');
+      const point =
+        message.location?.latitude !== undefined && message.location?.longitude !== undefined
+          ? ` (${message.location.latitude}, ${message.location.longitude})`
+          : '';
+      return `[The customer shared a location${caption(place)}${point}]`;
+    }
+    case 'contacts': {
+      const cards = (message.contacts ?? []).map((card) =>
+        [card.name?.formatted_name, ...(card.phones ?? []).map((phone) => phone.phone)].filter(Boolean).join(' '),
+      );
+      return `[The customer shared a contact${caption(cards.join('; '))}]`;
+    }
     case 'reaction':
       return '';
     default:
       return `[The customer sent a ${message.type ?? 'message'} you cannot read]`;
   }
+}
+
+const MEDIA_TYPES: MediaType[] = ['image', 'audio', 'document', 'video', 'sticker'];
+
+export function mediaOf(message: RawMessage): MediaRef | undefined {
+  const type = MEDIA_TYPES.find((item) => item === message.type);
+  if (!type) return undefined;
+  const raw = message[type];
+  if (!raw?.id) return undefined;
+  return {
+    type,
+    id: raw.id,
+    mimeType: raw.mime_type,
+    filename: raw.filename,
+    caption: raw.caption,
+  };
 }
 
 function withReferral(message: RawMessage, text: string): string {
@@ -109,6 +158,7 @@ export function parseWebhook(payload: unknown, phoneNumberId?: string): WebhookE
             name: contact?.profile?.name,
             timestamp: Number(message.timestamp ?? 0),
             text: withReferral(message, text),
+            ...(mediaOf(message) ? { media: mediaOf(message) } : {}),
           });
         }
       }
