@@ -12,6 +12,7 @@ const routes = createApp({
   verifyToken: env.WHATSAPP_VERIFY_TOKEN,
   appSecret: env.WHATSAPP_APP_SECRET,
   phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+  cronSecret: env.CRON_SECRET,
   agent: () => (agent ??= createAgent(env)),
   runInBackground: (task) => waitUntil(task),
 });

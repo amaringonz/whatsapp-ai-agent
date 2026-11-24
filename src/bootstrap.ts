@@ -7,6 +7,7 @@ import type { Env } from './config/env.js';
 import { ConsoleNotifier, ResendNotifier } from './notify/resend.js';
 import { MemoryStore } from './store/memory.js';
 import { RedisStore } from './store/redis.js';
+import { MessagingConversions } from './conversions/messaging.js';
 import { MediaReader } from './media/reader.js';
 import { OpenAICompatibleTranscriber } from './media/transcriber.js';
 import { WhatsAppClient } from './whatsapp/client.js';
@@ -61,6 +62,18 @@ export async function createAgent(env: Env): Promise<AgentService> {
       maxAudioSeconds: env.MAX_AUDIO_SECONDS,
     }),
     blockedNumbers: env.BLOCKED_NUMBERS?.split(',') ?? [],
+    followUp:
+      env.CRON_SECRET && env.FOLLOW_UP_HOURS > 0
+        ? { afterHours: env.FOLLOW_UP_HOURS, startHour: env.FOLLOW_UP_START_HOUR, endHour: env.FOLLOW_UP_END_HOUR, windowHours: 23 }
+        : undefined,
+    conversions: env.WHATSAPP_BUSINESS_ACCOUNT_ID
+      ? new MessagingConversions({
+          token: env.META_EVENTS_TOKEN ?? env.WHATSAPP_TOKEN,
+          businessAccountId: env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+          datasetId: env.META_DATASET_ID,
+          version: env.GRAPH_API_VERSION,
+        })
+      : undefined,
     limits: {
       messagesPerMinute: env.LIMIT_MESSAGES_PER_MINUTE,
       messagesPerDay: env.LIMIT_MESSAGES_PER_DAY,

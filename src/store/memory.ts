@@ -8,6 +8,7 @@ export class MemoryStore implements ConversationStore {
   private readonly conversations = new Map<string, string>();
   private readonly counters = new Map<string, { value: number; expires: number }>();
   private readonly flags = new Map<string, number>();
+  private readonly schedules = new Map<string, Map<string, number>>();
 
   constructor(private readonly clock: () => number = () => Date.now()) {}
 
@@ -64,6 +65,24 @@ export class MemoryStore implements ConversationStore {
 
   async clearFlag(key: string): Promise<void> {
     this.flags.delete(key);
+  }
+
+  async schedule(set: string, member: string, at: number): Promise<void> {
+    const entries = this.schedules.get(set) ?? new Map<string, number>();
+    entries.set(member, at);
+    this.schedules.set(set, entries);
+  }
+
+  async unschedule(set: string, member: string): Promise<boolean> {
+    return this.schedules.get(set)?.delete(member) ?? false;
+  }
+
+  async due(set: string, until: number, limit: number): Promise<string[]> {
+    return [...(this.schedules.get(set) ?? new Map<string, number>()).entries()]
+      .filter(([, at]) => at <= until)
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, limit)
+      .map(([member]) => member);
   }
 
   async load(contact: string): Promise<Conversation> {

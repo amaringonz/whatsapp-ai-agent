@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import { verifySignature } from './whatsapp/signature.js';
 import { parseWebhook } from './whatsapp/webhook.js';
@@ -9,6 +10,7 @@ export interface AppDependencies {
   verifyToken: string;
   appSecret: string;
   phoneNumberId?: string;
+  cronSecret?: string;
   agent: () => Promise<AgentService>;
   runInBackground: (task: Promise<unknown>) => void;
 }
@@ -18,6 +20,16 @@ export function createApp(deps: AppDependencies) {
 
   app.get('/', (c) => c.json({ name: 'whatsapp-ai-agent', ok: true }));
   app.get('/health', (c) => c.json({ ok: true }));
+
+  app.get('/cron/follow-ups', async (c) => {
+    if (!deps.cronSecret) return c.text('Follow-ups are not configured', 503);
+    const given = Buffer.from(c.req.header('authorization') ?? '');
+    const expected = Buffer.from(`Bearer ${deps.cronSecret}`);
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) return c.text('Unauthorized', 401);
+    const sent = await (await deps.agent()).runFollowUps();
+    console.info(`Follow-ups sent: ${sent}`);
+    return c.json({ sent });
+  });
 
   app.get('/webhook', (c) => {
     const mode = c.req.query('hub.mode');

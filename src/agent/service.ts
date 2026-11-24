@@ -10,6 +10,8 @@ import { toolSpecs, type HandoffRequest } from './tools.js';
 import { isCustomerTurn, type AssistantBlock, type ChatMessage, type CustomerBlock, type LanguageModel } from './types.js';
 import { stripAttachments, type MediaReader } from '../media/reader.js';
 import type { QueuedMessage } from '../store/types.js';
+import type { ConversionSender } from '../conversions/messaging.js';
+import type { BookingOrigin } from '../booking/types.js';
 
 export const RESUME_COMMAND = '/bot';
 export const BLOCK_COMMANDS = ['/block', '/bloquear'];
@@ -38,6 +40,17 @@ export const DEFAULT_LIMITS: AgentLimits = {
 };
 
 const DAY_SECONDS = 86_400;
+export const FOLLOW_UPS = 'follow-ups';
+export const SKIP_FOLLOW_UP = 'SKIP';
+
+export interface FollowUpSettings {
+  afterHours: number;
+  startHour: number;
+  endHour: number;
+  windowHours: number;
+}
+
+const followUpNote = `[Internal note, not written by the customer: the customer has not answered for a few hours. Write ONE short, friendly follow-up message in their language that picks up exactly where the conversation stopped and makes it easy to answer, for example by offering two times or asking one simple question. Do not repeat what you already said, do not pressure and do not say this message is automatic. If no follow-up makes sense (they said goodbye, are not interested or asked you to stop), reply with exactly ${SKIP_FOLLOW_UP}.]`;
 const digits = (value: string) => value.replace(/\D/g, '');
 
 export function clip(text: string, max: number): string {
@@ -54,6 +67,8 @@ export interface AgentServiceOptions {
   media?: MediaReader;
   limits?: Partial<AgentLimits>;
   blockedNumbers?: string[];
+  followUp?: FollowUpSettings;
+  conversions?: ConversionSender;
   debounceMs: number;
   humanPauseHours: number;
   historyLimit: number;
@@ -185,12 +200,18 @@ export class AgentService {
     await this.options.store.queueMessage(event.from, event.id, message);
     await this.options.whatsapp.markReadAndTyping(event.id).catch((error) => console.warn('Typing indicator failed', error));
 
-    if (event.name) {
+    if (event.name || event.ad) {
       const conversation = await this.options.store.load(event.from);
-      if (conversation.state.name !== event.name) {
+      let changed = false;
+      if (event.name && conversation.state.name !== event.name) {
         conversation.state.name = event.name;
-        await this.options.store.save(event.from, conversation);
+        changed = true;
       }
+      if (event.ad) {
+        conversation.state.ad = { ...event.ad, at: this.now().getTime() };
+        changed = true;
+      }
+      if (changed) await this.options.store.save(event.from, conversation);
     }
 
     await this.sleep(this.options.debounceMs);
@@ -236,6 +257,9 @@ export class AgentService {
         if (!queued.length) return;
 
         const conversation = await store.load(contact);
+        conversation.state.lastCustomerAt = this.now().getTime();
+        conversation.state.followUpsSent = 0;
+        await store.unschedule(FOLLOW_UPS, contact);
         if (this.paused(conversation)) {
           conversation.history.push({ role: 'user', content: queued.map((item) => item.text).join('\n') });
           await store.save(contact, conversation);
@@ -318,6 +342,100 @@ export class AgentService {
       .catch((notifyError) => console.error('Error notification failed', notifyError));
   }
 
+  private origin(conversation: Conversation): BookingOrigin | undefined {
+    const ad = conversation.state.ad;
+    if (!ad) return undefined;
+    return {
+      source: 'facebook',
+      medium: 'whatsapp-ad',
+      ...(ad.headline ? { campaign: ad.headline } : {}),
+      ...(ad.id ? { content: ad.id } : {}),
+      ...(ad.clickId ? { clickId: ad.clickId } : {}),
+    };
+  }
+
+  private localTime(at: number): { hour: number; minute: number } {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: this.options.config.business.timezone,
+      hour: 'numeric',
+      minute: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(at));
+    const read = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+    return { hour: read('hour'), minute: read('minute') };
+  }
+
+  nextSendTime(at: number): number {
+    const settings = this.options.followUp;
+    if (!settings) return at;
+    const { hour, minute } = this.localTime(at);
+    if (hour >= settings.startHour && hour < settings.endHour) return at;
+    const hoursAhead = hour < settings.startHour ? settings.startHour - hour : 24 - hour + settings.startHour;
+    return at + hoursAhead * 3_600_000 - minute * 60_000;
+  }
+
+  async runFollowUps(limit = 25): Promise<number> {
+    const { store } = this.options;
+    if (!this.options.followUp) return 0;
+    const now = this.now().getTime();
+    let sent = 0;
+    for (const contact of await store.due(FOLLOW_UPS, now, limit)) {
+      if (!(await store.unschedule(FOLLOW_UPS, contact))) continue;
+      if (!(await store.lock(contact, 120))) {
+        await store.schedule(FOLLOW_UPS, contact, now + 10 * 60_000);
+        continue;
+      }
+      try {
+        if (await this.followUp(contact)) sent += 1;
+      } catch (error) {
+        console.error(`Follow-up to ${contact} failed`, error);
+      } finally {
+        await store.unlock(contact);
+      }
+    }
+    return sent;
+  }
+
+  private async followUp(contact: string): Promise<boolean> {
+    const { store, model, whatsapp, config, historyLimit } = this.options;
+    const settings = this.options.followUp!;
+    const conversation = await store.load(contact);
+    const { state } = conversation;
+    if (this.paused(conversation) || state.booked || (state.followUpsSent ?? 0) >= 1 || !state.lastCustomerAt) return false;
+    if (conversation.history.at(-1)?.role !== 'assistant' || (await this.isBlocked(contact))) return false;
+
+    const now = this.now().getTime();
+    const deadline = state.lastCustomerAt + settings.windowHours * 3_600_000;
+    if (now >= deadline) return false;
+    const next = this.nextSendTime(now);
+    if (next > now) {
+      if (next < deadline) await store.schedule(FOLLOW_UPS, contact, next);
+      return false;
+    }
+    if (!(await this.withinBudget())) return false;
+
+    const messages = normalizeHistory(trimHistory(conversation.history, historyLimit));
+    messages.push({ role: 'user', content: followUpNote });
+    const response = await model.respond({
+      system: buildSystemPrompt(config, { now: this.now(), contactName: state.name, lead: state.lead }),
+      messages,
+      tools: [],
+    });
+    const text = response.content
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text.trim())
+      .join('\n')
+      .trim();
+    const message = splitReply(text)[0];
+    if (!message || message.toUpperCase().startsWith(SKIP_FOLLOW_UP)) return false;
+
+    await whatsapp.sendText(contact, message);
+    conversation.history.push({ role: 'assistant', content: message });
+    state.followUpsSent = (state.followUpsSent ?? 0) + 1;
+    await store.save(contact, conversation);
+    return true;
+  }
+
   private async reply(contact: string, conversation: Conversation): Promise<void> {
     const { config, model, booking, whatsapp, notifier, store, historyLimit, humanPauseHours } = this.options;
     const history = normalizeHistory(trimHistory(conversation.history, historyLimit));
@@ -342,10 +460,18 @@ export class AgentService {
         onHandoff: async (request) => {
           handoff = request;
         },
+        origin: this.origin(conversation),
         canBook: async () => !(await store.hasFlag(`bookings:full:${contact}`)),
         onBooked: async () => {
+          conversation.state.booked = true;
           const week = await store.increment(`bookings:week:${contact}`, 7 * DAY_SECONDS);
           if (week >= this.limits.bookingsPerWeek) await store.setFlag(`bookings:full:${contact}`, 7 * DAY_SECONDS);
+          const clickId = conversation.state.ad?.clickId;
+          if (clickId && this.options.conversions) {
+            await this.options.conversions
+              .send({ name: 'LeadSubmitted', clickId, time: this.now() })
+              .catch((error) => console.error('WhatsApp conversion failed', error));
+          }
         },
       },
     });
@@ -353,6 +479,10 @@ export class AgentService {
     conversation.history = stripAttachments(turn.history);
     for (const message of splitReply(turn.reply)) {
       await whatsapp.sendText(contact, message);
+    }
+
+    if (this.options.followUp && !handoff && !conversation.state.booked) {
+      await store.schedule(FOLLOW_UPS, contact, this.now().getTime() + this.options.followUp.afterHours * 3_600_000);
     }
 
     if (handoff) {

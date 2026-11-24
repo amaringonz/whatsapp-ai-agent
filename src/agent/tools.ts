@@ -1,5 +1,5 @@
 import type { BusinessConfig } from '../config/business.js';
-import type { BookingProvider } from '../booking/types.js';
+import type { BookingOrigin, BookingProvider } from '../booking/types.js';
 import type { HandoffReason } from '../notify/types.js';
 import type { ToolSpec } from './types.js';
 
@@ -15,6 +15,7 @@ export interface ToolContext {
   booking?: BookingProvider;
   onHandoff(request: HandoffRequest): Promise<void>;
   onLead(lead: Record<string, string>): void;
+  origin?: BookingOrigin;
   canBook?(): Promise<boolean>;
   onBooked?(): Promise<void>;
 }
@@ -133,6 +134,7 @@ export async function runTool(name: string, input: unknown, context: ToolContext
       time: String(time ?? ''),
       fields,
       source: 'whatsapp',
+      ...(context.origin ? { origin: context.origin } : {}),
     });
     if (result.ok) {
       await context.onBooked?.();

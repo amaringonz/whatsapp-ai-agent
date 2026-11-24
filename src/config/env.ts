@@ -38,6 +38,15 @@ const envSchema = z.object({
   NOTIFY_EMAIL_FROM: optional,
   NOTIFY_EMAIL_TO: optional,
 
+  CRON_SECRET: optional,
+  FOLLOW_UP_HOURS: z.coerce.number().min(0).default(4),
+  FOLLOW_UP_START_HOUR: z.coerce.number().int().min(0).max(23).default(8),
+  FOLLOW_UP_END_HOUR: z.coerce.number().int().min(1).max(24).default(20),
+
+  WHATSAPP_BUSINESS_ACCOUNT_ID: optional,
+  META_DATASET_ID: optional,
+  META_EVENTS_TOKEN: optional,
+
   BLOCKED_NUMBERS: optional,
   LIMIT_MESSAGES_PER_MINUTE: z.coerce.number().int().positive().default(10),
   LIMIT_MESSAGES_PER_DAY: z.coerce.number().int().positive().default(60),

@@ -16,6 +16,15 @@ export interface BookingRequest {
   time: string;
   fields: Record<string, string>;
   source: 'whatsapp';
+  origin?: BookingOrigin;
+}
+
+export interface BookingOrigin {
+  source: string;
+  medium: string;
+  campaign?: string;
+  content?: string;
+  clickId?: string;
 }
 
 export type BookingResult =

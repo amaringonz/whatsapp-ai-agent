@@ -8,6 +8,14 @@ export interface MediaRef {
   caption?: string;
 }
 
+export interface AdReferral {
+  id?: string;
+  type?: string;
+  headline?: string;
+  url?: string;
+  clickId?: string;
+}
+
 export interface InboundMessage {
   kind: 'inbound';
   id: string;
@@ -16,6 +24,7 @@ export interface InboundMessage {
   timestamp: number;
   text: string;
   media?: MediaRef;
+  ad?: AdReferral;
 }
 
 export interface BusinessEcho {
@@ -54,7 +63,14 @@ interface RawMessage {
   sticker?: RawMedia;
   document?: RawMedia;
   contacts?: { name?: { formatted_name?: string }; phones?: { phone?: string }[] }[];
-  referral?: { headline?: string; body?: string; source_url?: string };
+  referral?: {
+    headline?: string;
+    body?: string;
+    source_url?: string;
+    source_id?: string;
+    source_type?: string;
+    ctwa_clid?: string;
+  };
 }
 
 interface RawValue {
@@ -125,6 +141,20 @@ export function mediaOf(message: RawMessage): MediaRef | undefined {
   };
 }
 
+export function adOf(message: RawMessage): AdReferral | undefined {
+  const referral = message.referral;
+  if (!referral) return undefined;
+  const ad: AdReferral = {
+    id: referral.source_id,
+    type: referral.source_type,
+    headline: referral.headline,
+    url: referral.source_url,
+    clickId: referral.ctwa_clid,
+  };
+  const clean = Object.fromEntries(Object.entries(ad).filter(([, value]) => value)) as AdReferral;
+  return Object.keys(clean).length ? clean : undefined;
+}
+
 function withReferral(message: RawMessage, text: string): string {
   const ad = message.referral;
   if (!ad) return text;
@@ -159,6 +189,7 @@ export function parseWebhook(payload: unknown, phoneNumberId?: string): WebhookE
             timestamp: Number(message.timestamp ?? 0),
             text: withReferral(message, text),
             ...(mediaOf(message) ? { media: mediaOf(message) } : {}),
+            ...(adOf(message) ? { ad: adOf(message) } : {}),
           });
         }
       }

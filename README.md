@@ -21,6 +21,8 @@ Customer ──▶ WhatsApp ──▶ /webhook ──▶ Agent (LLM + tools) ─
 - **Reads photos, PDFs and voice notes.** Photos and PDFs go to the model as images and documents; voice notes are transcribed with any OpenAI-compatible speech-to-text API (OpenAI, Groq and others). Attachments are only sent on the turn they arrive, so the saved history stays small. Locations and shared contacts arrive as text; videos and unsupported files get a polite request for another format.
 - **Waits for the customer to finish typing.** Several quick messages are answered together, with read receipts and a typing indicator.
 - **Books appointments** through a small HTTP contract, so it works with any calendar or backend.
+- **Follows up once.** If a customer goes quiet before booking, the agent sends one short, contextual follow-up a few hours later, only during business hours and only inside WhatsApp's 24-hour customer service window.
+- **Measures Click-to-WhatsApp ads.** It keeps the ad and click id from the first message, sends them with the booking, and reports the booking to Meta through the [Conversions API for Business Messaging](https://developers.facebook.com/docs/marketing-api/conversions-api/business-messaging), so Ads Manager can attribute appointments to ads.
 - **Hands off with context.** When the goal is reached or a case is urgent, the owner gets an email with a summary, the lead details and the transcript, and the agent stops answering in that chat.
 - **Steps aside when a human writes.** With [WhatsApp Coexistence](https://developers.facebook.com/docs/whatsapp/embedded-signup/onboarding-business-app-users), messages sent from the WhatsApp Business app pause the agent for that chat. Replying `/bot` from the app hands it back.
 - **Stays in scope.** It only talks about the business, which keeps it within WhatsApp's 2026 policy for AI on the Business Platform: business-specific assistants are allowed, general-purpose chatbots are not.
@@ -138,7 +140,7 @@ Booking is optional. When `BOOKING_API_URL` and `BOOKING_API_TOKEN` are set, the
 | GET    | `/availability` | `{ "days": [{ "date": "2026-12-02", "label": "Wed Dec 2", "slots": [{ "time": "09:00", "label": "9:00 a.m." }] }] }` |
 | POST   | `/appointments` | `201 { "id", "summary" }`, `409` if the slot was taken, `422` if data is invalid |
 
-The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, where `fields` holds the booking fields from your config.
+The POST body is `{ name, phone, date, time, fields, source: "whatsapp", origin? }`, where `fields` holds the booking fields from your config and `origin` is `{ source: "facebook", medium: "whatsapp-ad", campaign, content, clickId }` when the chat started from an ad (`content` is the ad id and `clickId` the `ctwa_clid`).
 
 ## Environment
 
@@ -157,6 +159,10 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, wher
 | `TRANSCRIPTION_API_KEY` | no | Enables voice notes. Uses `OPENAI_API_KEY` when transcribing with OpenAI. Without a key the agent asks the customer to write instead |
 | `TRANSCRIPTION_BASE_URL`, `TRANSCRIPTION_MODEL` | no | Any OpenAI-compatible `/audio/transcriptions` API. Defaults to OpenAI `gpt-4o-mini-transcribe`; for Groq use `https://api.groq.com/openai/v1` and `whisper-large-v3-turbo` |
 | `RESEND_API_KEY`, `NOTIFY_EMAIL_FROM`, `NOTIFY_EMAIL_TO` | no | Handoff emails; falls back to logs |
+| `CRON_SECRET` | no | Enables follow-ups. Vercel Cron calls `/cron/follow-ups` every 15 minutes with it (see `vercel.json`) |
+| `FOLLOW_UP_HOURS`, `FOLLOW_UP_START_HOUR`, `FOLLOW_UP_END_HOUR` | no | Defaults `4`, `8` and `20`, in the business time zone. `0` hours turns follow-ups off |
+| `WHATSAPP_BUSINESS_ACCOUNT_ID` | no | Enables ad conversion events for chats that came from Click-to-WhatsApp ads |
+| `META_DATASET_ID`, `META_EVENTS_TOKEN` | no | The dataset is looked up from the WhatsApp account when empty; the token defaults to `WHATSAPP_TOKEN` and needs `whatsapp_business_manage_events` |
 | `BLOCKED_NUMBERS` | no | Comma-separated numbers the agent never answers |
 | `LIMIT_MESSAGES_PER_MINUTE`, `LIMIT_MESSAGES_PER_DAY` | no | Per contact, defaults `10` and `60` |
 | `LIMIT_MEDIA_PER_DAY`, `LIMIT_BOOKINGS_PER_WEEK` | no | Per contact, defaults `8` and `2` |
@@ -171,12 +177,13 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, wher
 
 1. Import the repository in Vercel. It detects Hono and serves `src/index.ts`.
 2. Add an Upstash Redis store from Vercel Storage and the variables above.
-3. In your Meta app, set the callback URL to `https://<your-app>/webhook` with your verify token and subscribe to `messages` and `smb_message_echoes`.
-4. To keep using the WhatsApp Business app on the same number, onboard it with **Coexistence**. Meta asks for some days of real activity in the app before the number qualifies.
+3. Set `CRON_SECRET` to turn on follow-ups; `vercel.json` already schedules the cron.
+4. In your Meta app, set the callback URL to `https://<your-app>/webhook` with your verify token and subscribe to `messages` and `smb_message_echoes`.
+5. To keep using the WhatsApp Business app on the same number, onboard it with **Coexistence**. Meta asks for some days of real activity in the app before the number qualifies.
 
 ## Testing
 
-`npm test` runs the suite with a scripted model, so it needs no keys or network. It covers signature checks, webhook parsing, media reading and transcription, both model adapters, rate limits, blocking, budget and failure handling, prompt building, history trimming, debouncing, booking, handoff, human takeover, pause expiry and tool failures. `npm run typecheck` runs the TypeScript compiler in strict mode.
+`npm test` runs the suite with a scripted model, so it needs no keys or network. It covers signature checks, webhook parsing, media reading and transcription, both model adapters, rate limits, blocking, budget and failure handling, follow-ups, ad attribution, prompt building, history trimming, debouncing, booking, handoff, human takeover, pause expiry and tool failures. `npm run typecheck` runs the TypeScript compiler in strict mode.
 
 ## License
 

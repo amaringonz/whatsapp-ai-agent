@@ -74,6 +74,18 @@ export class RedisStore implements ConversationStore {
     await this.redis.del(this.key('flag', key));
   }
 
+  async schedule(set: string, member: string, at: number): Promise<void> {
+    await this.redis.zadd(this.key('schedule', set), { score: at, member });
+  }
+
+  async unschedule(set: string, member: string): Promise<boolean> {
+    return (await this.redis.zrem(this.key('schedule', set), member)) === 1;
+  }
+
+  async due(set: string, until: number, limit: number): Promise<string[]> {
+    return this.redis.zrange<string[]>(this.key('schedule', set), 0, until, { byScore: true, offset: 0, count: limit });
+  }
+
   async load(contact: string): Promise<Conversation> {
     return (await this.redis.get<Conversation>(this.key('conversation', contact))) ?? emptyConversation();
   }

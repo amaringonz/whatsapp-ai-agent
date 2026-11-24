@@ -1,5 +1,5 @@
 import type { ChatMessage } from '../agent/types.js';
-import type { MediaRef } from '../whatsapp/webhook.js';
+import type { AdReferral, MediaRef } from '../whatsapp/webhook.js';
 
 export interface QueuedMessage {
   text: string;
@@ -27,6 +27,10 @@ export interface ConversationState {
   pauseReason?: 'handoff' | 'human_reply';
   lead?: Record<string, string>;
   lastHandoff?: string;
+  lastCustomerAt?: number;
+  followUpsSent?: number;
+  booked?: boolean;
+  ad?: AdReferral & { at: number };
 }
 
 export interface Conversation {
@@ -45,6 +49,9 @@ export interface ConversationStore {
   setFlag(key: string, ttlSeconds?: number): Promise<boolean>;
   hasFlag(key: string): Promise<boolean>;
   clearFlag(key: string): Promise<void>;
+  schedule(set: string, member: string, at: number): Promise<void>;
+  unschedule(set: string, member: string): Promise<boolean>;
+  due(set: string, until: number, limit: number): Promise<string[]>;
   load(contact: string): Promise<Conversation>;
   save(contact: string, conversation: Conversation): Promise<void>;
 }
