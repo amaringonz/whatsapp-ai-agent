@@ -1,5 +1,8 @@
 # WhatsApp AI Agent
 
+[![CI](https://github.com/amaringonz/whatsapp-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/amaringonz/whatsapp-ai-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A business-specific AI agent for WhatsApp. It answers customers like a careful team member, qualifies leads, books appointments and **hands the conversation to a human only when the job is done or something needs a person**.
 
 Built with TypeScript, [Hono](https://hono.dev), the [WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) and [Claude](https://docs.claude.com). Runs on Vercel with Upstash Redis.
