@@ -1,4 +1,4 @@
-export type HandoffReason = 'completed' | 'urgent' | 'requested_human' | 'out_of_scope';
+export type HandoffReason = 'completed' | 'urgent' | 'requested_human' | 'out_of_scope' | 'error' | 'limit';
 
 export interface HandoffNotice {
   reason: HandoffReason;
@@ -12,6 +12,7 @@ export interface HandoffNotice {
 
 export interface Notifier {
   notify(notice: HandoffNotice): Promise<void>;
+  alert?(subject: string, text: string): Promise<void>;
 }
 
 export const reasonLabels: Record<HandoffReason, string> = {
@@ -19,6 +20,8 @@ export const reasonLabels: Record<HandoffReason, string> = {
   urgent: 'Urgent',
   requested_human: 'Asked for a person',
   out_of_scope: 'Needs your answer',
+  error: 'The assistant could not answer',
+  limit: 'Message limit reached',
 };
 
 export function renderNotice(notice: HandoffNotice): { subject: string; text: string } {
@@ -35,7 +38,9 @@ export function renderNotice(notice: HandoffNotice): { subject: string; text: st
       ...(lead.length ? ['', ...lead] : []),
       '',
       `Open the chat: https://wa.me/${notice.contact}`,
-      'The assistant stays quiet in this chat until you reply "/bot" from the WhatsApp Business app or the pause ends.',
+      notice.reason === 'error'
+        ? 'The assistant keeps answering new messages in this chat. If you reply yourself from the WhatsApp Business app, it steps aside.'
+        : 'The assistant stays quiet in this chat until you reply "/bot" from the WhatsApp Business app or the pause ends.',
       '',
       '— Conversation —',
       notice.transcript,

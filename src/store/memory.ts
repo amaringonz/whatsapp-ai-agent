@@ -6,6 +6,10 @@ export class MemoryStore implements ConversationStore {
   private readonly latest = new Map<string, string>();
   private readonly locks = new Set<string>();
   private readonly conversations = new Map<string, string>();
+  private readonly counters = new Map<string, { value: number; expires: number }>();
+  private readonly flags = new Map<string, number>();
+
+  constructor(private readonly clock: () => number = () => Date.now()) {}
 
   async claimEvent(id: string): Promise<boolean> {
     if (this.events.has(id)) return false;
@@ -36,6 +40,30 @@ export class MemoryStore implements ConversationStore {
 
   async unlock(contact: string): Promise<void> {
     this.locks.delete(contact);
+  }
+
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    const now = this.clock();
+    const current = this.counters.get(key);
+    const entry = current && current.expires > now ? current : { value: 0, expires: now + ttlSeconds * 1000 };
+    entry.value += 1;
+    this.counters.set(key, entry);
+    return entry.value;
+  }
+
+  async setFlag(key: string, ttlSeconds?: number): Promise<boolean> {
+    if (await this.hasFlag(key)) return false;
+    this.flags.set(key, ttlSeconds ? this.clock() + ttlSeconds * 1000 : Number.POSITIVE_INFINITY);
+    return true;
+  }
+
+  async hasFlag(key: string): Promise<boolean> {
+    const expires = this.flags.get(key);
+    return expires !== undefined && expires > this.clock();
+  }
+
+  async clearFlag(key: string): Promise<void> {
+    this.flags.delete(key);
   }
 
   async load(contact: string): Promise<Conversation> {

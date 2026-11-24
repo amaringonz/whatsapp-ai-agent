@@ -3,6 +3,8 @@ import { verifySignature } from './whatsapp/signature.js';
 import { parseWebhook } from './whatsapp/webhook.js';
 import type { AgentService } from './agent/service.js';
 
+export const MAX_WEBHOOK_BYTES = 512 * 1024;
+
 export interface AppDependencies {
   verifyToken: string;
   appSecret: string;
@@ -26,7 +28,10 @@ export function createApp(deps: AppDependencies) {
   });
 
   app.post('/webhook', async (c) => {
+    const declared = Number(c.req.header('content-length') ?? 0);
+    if (declared > MAX_WEBHOOK_BYTES) return c.text('Payload too large', 413);
     const raw = await c.req.text();
+    if (Buffer.byteLength(raw) > MAX_WEBHOOK_BYTES) return c.text('Payload too large', 413);
     if (!verifySignature(raw, c.req.header('x-hub-signature-256'), deps.appSecret)) {
       console.warn('Rejected webhook with an invalid signature');
       return c.text('Invalid signature', 401);

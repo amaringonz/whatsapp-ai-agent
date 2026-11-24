@@ -15,6 +15,8 @@ export interface ToolContext {
   booking?: BookingProvider;
   onHandoff(request: HandoffRequest): Promise<void>;
   onLead(lead: Record<string, string>): void;
+  canBook?(): Promise<boolean>;
+  onBooked?(): Promise<void>;
 }
 
 const reasons: HandoffReason[] = ['completed', 'urgent', 'requested_human', 'out_of_scope'];
@@ -118,6 +120,9 @@ export async function runTool(name: string, input: unknown, context: ToolContext
   }
 
   if (name === 'book_appointment') {
+    if (context.canBook && !(await context.canBook())) {
+      return 'This customer already booked the maximum number of appointments for this week. Do not book again; offer to hand off the conversation.';
+    }
     const { name: customer, date, time, ...rest } = args;
     const fields = asRecord(rest);
     context.onLead({ name: String(customer ?? ''), ...fields });
@@ -129,7 +134,10 @@ export async function runTool(name: string, input: unknown, context: ToolContext
       fields,
       source: 'whatsapp',
     });
-    if (result.ok) return `Booked. Reference ${result.id}. ${result.summary}`.trim();
+    if (result.ok) {
+      await context.onBooked?.();
+      return `Booked. Reference ${result.id}. ${result.summary}`.trim();
+    }
     if (result.reason === 'slot_taken') return `That time was just taken. ${result.message} Call get_availability again.`;
     return `Could not book: ${result.message}`;
   }

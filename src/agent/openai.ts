@@ -105,6 +105,15 @@ export function fromOpenAIResponse(response: OpenAIResponse): ModelResponse {
   return { content, stopReason: hasTools ? 'tool_use' : (choice?.finish_reason ?? null) };
 }
 
+export class OpenAIError extends Error {
+  constructor(
+    readonly status: number,
+    body: string,
+  ) {
+    super(`OpenAI ${status}: ${body.slice(0, 500)}`);
+  }
+}
+
 export class OpenAIModel implements LanguageModel {
   constructor(
     private readonly options: {
@@ -112,11 +121,26 @@ export class OpenAIModel implements LanguageModel {
       model: string;
       baseUrl?: string;
       maxTokens?: number;
+      attempts?: number;
+      retryDelayMs?: number;
       fetch?: typeof fetch;
     },
   ) {}
 
   async respond(request: ModelRequest): Promise<ModelResponse> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.request(request);
+      } catch (error) {
+        const status = error instanceof OpenAIError ? error.status : 0;
+        const retryable = status === 0 || status === 408 || status === 409 || status === 429 || status >= 500;
+        if (!retryable || attempt >= (this.options.attempts ?? 3)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, (this.options.retryDelayMs ?? 1000) * attempt));
+      }
+    }
+  }
+
+  private async request(request: ModelRequest): Promise<ModelResponse> {
     const send = this.options.fetch ?? fetch;
     const response = await send(`${(this.options.baseUrl ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
@@ -136,7 +160,7 @@ export class OpenAIModel implements LanguageModel {
       }),
       signal: AbortSignal.timeout(60_000),
     });
-    if (!response.ok) throw new Error(`OpenAI ${response.status}: ${await response.text()}`);
+    if (!response.ok) throw new OpenAIError(response.status, await response.text());
     return fromOpenAIResponse((await response.json()) as OpenAIResponse);
   }
 }

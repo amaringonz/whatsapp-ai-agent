@@ -45,6 +45,13 @@ export const businessConfigSchema = z.object({
     completed: z.string().min(1),
     urgent: z.array(z.string().min(1)).min(1),
   }),
+  fallbacks: z
+    .object({
+      error: z.string().min(1).default('Sorry, I had a problem answering. A person from the team will write to you here shortly.'),
+      busy: z.string().min(1).default('Thanks for writing! We are receiving many messages right now. A person from the team will answer you here shortly.'),
+      limit: z.string().min(1).default('Thanks for your messages! A person from the team will continue this conversation here.'),
+    })
+    .prefault({}),
   booking: z
     .object({
       enabled: z.boolean().default(true),

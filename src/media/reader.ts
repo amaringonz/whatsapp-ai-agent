@@ -17,6 +17,13 @@ const base64 = (data: Uint8Array) => Buffer.from(data).toString('base64');
 const quoted = (value?: string) => (value ? `: "${value}"` : '');
 const mime = (value?: string) => value?.split(';')[0]?.trim().toLowerCase();
 
+export const AUDIO_BYTES_PER_SECOND = 4000;
+
+export function countPdfPages(data: Uint8Array): number {
+  const source = Buffer.from(data).toString('latin1');
+  return source.match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length ?? 0;
+}
+
 function adNote(value: string): string {
   return value.match(/\n\[Came from an ad[^\n]*\]$/)?.[0] ?? '';
 }
@@ -43,6 +50,8 @@ export class MediaReader {
       downloader?: MediaDownloader;
       transcriber?: Transcriber;
       language?: string;
+      maxPdfPages?: number;
+      maxAudioSeconds?: number;
     } = {},
   ) {}
 
@@ -62,9 +71,8 @@ export class MediaReader {
       return note ? [...blocks, text(note.trim())] : blocks;
     } catch (error) {
       if (error instanceof MediaTooLargeError) {
-        return [
-          text(`[The customer sent a ${media.type} that is too large to open. Ask them for a smaller one or to tell you what it shows.]`),
-        ];
+        const what = media.type === 'audio' ? 'voice note that is too long' : `${media.type} that is too large`;
+        return [text(`[The customer sent a ${what} to open. Ask them kindly for a shorter one or to write what it says.]`)];
       }
       console.warn(`Could not read ${media.type} ${media.id}`, error);
       return [text(item.text)];
@@ -105,6 +113,15 @@ export class MediaReader {
 
     let document: DocumentBlock | undefined;
     if (type === 'application/pdf') {
+      const pages = countPdfPages(file.data);
+      const maxPages = this.options.maxPdfPages ?? 20;
+      if (pages > maxPages) {
+        return [
+          text(
+            `[The customer sent a PDF${title ? ` "${title}"` : ''} with ${pages} pages, more than the ${maxPages} you can read. Ask them which pages matter or to send only those.]`,
+          ),
+        ];
+      }
       document = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64(file.data) } };
     } else if (TEXT_TYPES.has(type)) {
       const content = new TextDecoder().decode(file.data).slice(0, TEXT_MAX_CHARS);
@@ -117,7 +134,8 @@ export class MediaReader {
 
   private async audio(media: MediaRef): Promise<CustomerBlock[] | undefined> {
     if (!this.options.transcriber) return undefined;
-    const file = await this.options.downloader!.downloadMedia(media.id, AUDIO_MAX_BYTES);
+    const maxBytes = Math.min(AUDIO_MAX_BYTES, (this.options.maxAudioSeconds ?? 300) * AUDIO_BYTES_PER_SECOND);
+    const file = await this.options.downloader!.downloadMedia(media.id, maxBytes);
     const transcript = await this.options.transcriber.transcribe(file.data, file.mimeType, this.options.language);
     if (!transcript) return [text('[The customer sent a voice note with no words you could make out. Ask them kindly to write it.]')];
     return [text(`[Voice note, transcribed] ${transcript}`)];

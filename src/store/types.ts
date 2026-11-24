@@ -41,6 +41,10 @@ export interface ConversationStore {
   takeQueued(contact: string): Promise<QueuedMessage[]>;
   lock(contact: string, seconds: number): Promise<boolean>;
   unlock(contact: string): Promise<void>;
+  increment(key: string, ttlSeconds: number): Promise<number>;
+  setFlag(key: string, ttlSeconds?: number): Promise<boolean>;
+  hasFlag(key: string): Promise<boolean>;
+  clearFlag(key: string): Promise<void>;
   load(contact: string): Promise<Conversation>;
   save(contact: string, conversation: Conversation): Promise<void>;
 }

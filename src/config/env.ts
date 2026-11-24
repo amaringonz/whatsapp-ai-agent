@@ -38,6 +38,18 @@ const envSchema = z.object({
   NOTIFY_EMAIL_FROM: optional,
   NOTIFY_EMAIL_TO: optional,
 
+  BLOCKED_NUMBERS: optional,
+  LIMIT_MESSAGES_PER_MINUTE: z.coerce.number().int().positive().default(10),
+  LIMIT_MESSAGES_PER_DAY: z.coerce.number().int().positive().default(60),
+  LIMIT_MEDIA_PER_DAY: z.coerce.number().int().min(0).default(8),
+  LIMIT_BOOKINGS_PER_WEEK: z.coerce.number().int().min(0).default(2),
+  LIMIT_REPLIES_PER_DAY: z.coerce.number().int().positive().default(1500),
+  MAX_MESSAGE_CHARS: z.coerce.number().int().positive().default(1500),
+  MAX_TURN_CHARS: z.coerce.number().int().positive().default(4000),
+  MAX_MESSAGE_AGE_MINUTES: z.coerce.number().int().positive().default(360),
+  MAX_PDF_PAGES: z.coerce.number().int().positive().default(20),
+  MAX_AUDIO_SECONDS: z.coerce.number().int().positive().default(300),
+
   DEBOUNCE_MS: z.coerce.number().int().min(0).default(4000),
   HUMAN_PAUSE_HOURS: z.coerce.number().positive().default(24),
   HISTORY_LIMIT: z.coerce.number().int().min(6).default(40),

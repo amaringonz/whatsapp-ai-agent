@@ -25,6 +25,8 @@ Customer ──▶ WhatsApp ──▶ /webhook ──▶ Agent (LLM + tools) ─
 - **Steps aside when a human writes.** With [WhatsApp Coexistence](https://developers.facebook.com/docs/whatsapp/embedded-signup/onboarding-business-app-users), messages sent from the WhatsApp Business app pause the agent for that chat. Replying `/bot` from the app hands it back.
 - **Stays in scope.** It only talks about the business, which keeps it within WhatsApp's 2026 policy for AI on the Business Platform: business-specific assistants are allowed, general-purpose chatbots are not.
 - **Is honest about being an assistant** when someone asks.
+- **Protects your AI budget.** Per-contact and daily limits, size caps and blocked numbers keep one person, a bot or a prompt-injection attempt from running up the bill. See [Limits and security](#limits-and-security).
+- **Never fails silently.** If the model or WhatsApp fails, the customer gets a short message and the owner gets an email.
 
 ## How a conversation flows
 
@@ -99,6 +101,7 @@ Everything the agent knows comes from one JSON file, validated with Zod. Keep re
     "completed": "When the goal counts as done",
     "urgent": ["Situations that need a person right away"]
   },
+  "fallbacks": { "error": "...", "busy": "...", "limit": "..." },
   "booking": {
     "enabled": true,
     "description": "...",
@@ -108,6 +111,23 @@ Everything the agent knows comes from one JSON file, validated with Zod. Keep re
 ```
 
 See [`examples/business.example.json`](examples/business.example.json) for a full dental clinic.
+
+## Limits and security
+
+| Protection | Default | What happens |
+| --- | --- | --- |
+| Signed webhooks | always | Requests without a valid `X-Hub-Signature-256` are rejected; payloads over 512 KB get `413` |
+| Duplicate and late deliveries | 6 hours | Each message is handled once; messages Meta retries hours later are ignored |
+| Messages per contact | 10 per minute, 60 per day | Bursts are dropped. Past the daily limit the chat is paused, the customer gets a short note and the owner an email |
+| Message length | 1,500 characters, 4,000 per turn | Longer text is cut before it reaches the model |
+| Files per contact | 8 per day | PDFs up to 20 pages, voice notes up to about 5 minutes, photos up to 5 MB |
+| Appointments per contact | 2 per week | The booking tool refuses more and suggests a handoff |
+| Replies per day, all chats | 1,500 | Past the limit, customers get a "we will answer soon" note and the owner gets one email |
+| Blocked numbers | `BLOCKED_NUMBERS` | The agent never answers them. From the WhatsApp Business app, `/block` (or `/bloquear`) blocks a chat and `/unblock` (or `/desbloquear`) lifts it |
+| Prompt injection | always | The prompt treats everything a customer sends, including photos and PDFs, as information and never as instructions |
+| Failures | always | The customer gets the `fallbacks.error` message; the owner gets at most one email per chat per hour, and one alert per hour if WhatsApp rejects messages (for example, an expired token). OpenAI rate limits and server errors are retried |
+
+Every limit can be changed with an environment variable, and every customer-facing note can be written in your own words under `fallbacks` in the business config.
 
 ## Booking API contract
 
@@ -137,6 +157,12 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, wher
 | `TRANSCRIPTION_API_KEY` | no | Enables voice notes. Uses `OPENAI_API_KEY` when transcribing with OpenAI. Without a key the agent asks the customer to write instead |
 | `TRANSCRIPTION_BASE_URL`, `TRANSCRIPTION_MODEL` | no | Any OpenAI-compatible `/audio/transcriptions` API. Defaults to OpenAI `gpt-4o-mini-transcribe`; for Groq use `https://api.groq.com/openai/v1` and `whisper-large-v3-turbo` |
 | `RESEND_API_KEY`, `NOTIFY_EMAIL_FROM`, `NOTIFY_EMAIL_TO` | no | Handoff emails; falls back to logs |
+| `BLOCKED_NUMBERS` | no | Comma-separated numbers the agent never answers |
+| `LIMIT_MESSAGES_PER_MINUTE`, `LIMIT_MESSAGES_PER_DAY` | no | Per contact, defaults `10` and `60` |
+| `LIMIT_MEDIA_PER_DAY`, `LIMIT_BOOKINGS_PER_WEEK` | no | Per contact, defaults `8` and `2` |
+| `LIMIT_REPLIES_PER_DAY` | no | All chats together, default `1500` |
+| `MAX_MESSAGE_CHARS`, `MAX_TURN_CHARS` | no | Defaults `1500` and `4000` |
+| `MAX_MESSAGE_AGE_MINUTES`, `MAX_PDF_PAGES`, `MAX_AUDIO_SECONDS` | no | Defaults `360`, `20` and `300` |
 | `DEBOUNCE_MS` | no | Wait for more messages, default `4000` |
 | `HUMAN_PAUSE_HOURS` | no | How long the agent stays quiet after a handoff or a human reply, default `24` |
 | `HISTORY_LIMIT` | no | Messages kept per chat, default `40` |
@@ -150,7 +176,7 @@ The POST body is `{ name, phone, date, time, fields, source: "whatsapp" }`, wher
 
 ## Testing
 
-`npm test` runs the suite with a scripted model, so it needs no keys or network. It covers signature checks, webhook parsing, media reading and transcription, both model adapters, prompt building, history trimming, debouncing, booking, handoff, human takeover, pause expiry and tool failures. `npm run typecheck` runs the TypeScript compiler in strict mode.
+`npm test` runs the suite with a scripted model, so it needs no keys or network. It covers signature checks, webhook parsing, media reading and transcription, both model adapters, rate limits, blocking, budget and failure handling, prompt building, history trimming, debouncing, booking, handoff, human takeover, pause expiry and tool failures. `npm run typecheck` runs the TypeScript compiler in strict mode.
 
 ## License
 

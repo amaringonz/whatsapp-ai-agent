@@ -52,6 +52,28 @@ export class RedisStore implements ConversationStore {
     await this.redis.del(this.key('lock', contact));
   }
 
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    const [count] = await this.redis
+      .multi()
+      .incr(this.key('count', key))
+      .expire(this.key('count', key), ttlSeconds, 'NX')
+      .exec<[number, number]>();
+    return count;
+  }
+
+  async setFlag(key: string, ttlSeconds?: number): Promise<boolean> {
+    const options = ttlSeconds ? { nx: true as const, ex: ttlSeconds } : { nx: true as const };
+    return (await this.redis.set(this.key('flag', key), 1, options)) === 'OK';
+  }
+
+  async hasFlag(key: string): Promise<boolean> {
+    return (await this.redis.exists(this.key('flag', key))) === 1;
+  }
+
+  async clearFlag(key: string): Promise<void> {
+    await this.redis.del(this.key('flag', key));
+  }
+
   async load(contact: string): Promise<Conversation> {
     return (await this.redis.get<Conversation>(this.key('conversation', contact))) ?? emptyConversation();
   }

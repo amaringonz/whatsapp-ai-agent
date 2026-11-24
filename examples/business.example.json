@@ -38,6 +38,11 @@
       "Pide un precio cerrado, un descuento o una forma de pago especial."
     ]
   },
+  "fallbacks": {
+    "error": "Disculpa, tuve un problema para responderte. Alguien de la clínica te escribe por aquí en un momento.",
+    "busy": "¡Gracias por escribirnos! En este momento tenemos muchos mensajes; alguien de la clínica te responde por aquí en breve.",
+    "limit": "¡Gracias por tus mensajes! Alguien de la clínica sigue la conversación contigo por aquí."
+  },
   "booking": {
     "enabled": true,
     "description": "Las citas de valoración duran 30 minutos y se agendan en el horario de la clínica.",
