@@ -151,9 +151,11 @@ Booking is optional. When `BOOKING_API_URL` and `BOOKING_API_TOKEN` are set, the
 | Method | Path            | Response                                                                 |
 | ------ | --------------- | ------------------------------------------------------------------------ |
 | GET    | `/availability` | `{ "days": [{ "date": "2026-12-02", "label": "Wed Dec 2", "slots": [{ "time": "09:00", "label": "9:00 a.m." }] }] }` |
-| POST   | `/appointments` | `201 { "id", "summary" }`, `409` if the slot was taken, `422` if data is invalid |
+| POST   | `/appointments` | `201 { "id", "summary", "paymentUrl"? }`, `409` if the slot was taken, `422` if data is invalid |
 
 The POST body is `{ name, phone, date, time, fields, source: "whatsapp", origin? }`, where `fields` holds the booking fields from your config and `origin` is `{ source: "facebook", medium: "whatsapp-ad", campaign, content, clickId }` when the chat started from an ad (`content` is the ad id and `clickId` the `ctwa_clid`).
+
+If the appointment must be paid before it is confirmed, return an `https://` `paymentUrl`. The agent sends it to the customer and explains that the time is held until they pay; your API confirms the appointment when the payment arrives.
 
 ## Environment
 

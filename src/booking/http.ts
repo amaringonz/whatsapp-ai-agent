@@ -36,9 +36,13 @@ export class HttpBookingProvider implements BookingProvider {
       id?: string;
       summary?: string;
       message?: string;
+      paymentUrl?: string;
     };
 
-    if (response.ok && data.id) return { ok: true, id: data.id, summary: data.summary ?? '' };
+    if (response.ok && data.id) {
+      const paymentUrl = typeof data.paymentUrl === 'string' && data.paymentUrl.startsWith('https://') ? data.paymentUrl : undefined;
+      return { ok: true, id: data.id, summary: data.summary ?? '', ...(paymentUrl ? { paymentUrl } : {}) };
+    }
     if (response.status === 409) {
       return { ok: false, reason: 'slot_taken', message: data.message ?? 'That time was just taken.' };
     }

@@ -138,6 +138,9 @@ export async function runTool(name: string, input: unknown, context: ToolContext
     });
     if (result.ok) {
       await context.onBooked?.();
+      if (result.paymentUrl) {
+        return `Reserved, waiting for payment. Reference ${result.id}. ${result.summary} The appointment is confirmed only after the customer pays. Send them this payment link exactly as written: ${result.paymentUrl}`.trim();
+      }
       return `Booked. Reference ${result.id}. ${result.summary}`.trim();
     }
     if (result.reason === 'slot_taken') return `That time was just taken. ${result.message} Call get_availability again.`;

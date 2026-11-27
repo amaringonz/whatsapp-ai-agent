@@ -81,6 +81,7 @@ export function buildSystemPrompt(
           '- Call get_availability before offering times. Offer two or three options, never the full list.',
           '- Before calling book_appointment, confirm the day, the time and the details in one short message.',
           '- If the time was just taken, apologize briefly and offer the next options.',
+          '- If booking returns a payment link, send the link on its own line, say the time is held only for a short while and that the appointment is confirmed once paid. Never ask for card details in the chat.',
         ])
       : '',
 

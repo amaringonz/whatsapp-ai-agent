@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { buildSystemPrompt, splitReply } from '../src/agent/prompt.js';
 import { trimHistory } from '../src/agent/run.js';
 import { AgentService, normalizeHistory } from '../src/agent/service.js';
-import { toolSpecs } from '../src/agent/tools.js';
+import { runTool, toolSpecs } from '../src/agent/tools.js';
 import type { AssistantBlock, ChatMessage, LanguageModel, ModelRequest, ModelResponse } from '../src/agent/types.js';
 import type { BookingProvider, BookingRequest } from '../src/booking/types.js';
 import { parseBusinessConfig } from '../src/config/business.js';
@@ -200,6 +200,31 @@ describe('AgentService', () => {
     advance(25);
     await agent.handle(inbound('m1', 'Hola'));
     expect(sent).toEqual(['Hola otra vez']);
+  });
+
+  it('passes the payment link to the model when the booking waits for payment', async () => {
+    const pending: BookingProvider = {
+      availability: async () => [],
+      book: async () => ({
+        ok: true,
+        id: 'p1',
+        summary: 'Apartada el miércoles 2 de diciembre a las 9:00 a. m.',
+        paymentUrl: 'https://example.com/pago/p1',
+      }),
+    };
+    const result = await runTool(
+      'book_appointment',
+      { name: 'Ana Mora', date: '2026-12-02', time: '09:00' },
+      {
+        contact,
+        config,
+        booking: pending,
+        onHandoff: async () => undefined,
+        onLead: () => undefined,
+      },
+    );
+    expect(result).toContain('waiting for payment');
+    expect(result).toContain('https://example.com/pago/p1');
   });
 
   it('reports tool failures to the model instead of crashing', async () => {

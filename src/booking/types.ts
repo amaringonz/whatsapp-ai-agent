@@ -28,7 +28,7 @@ export interface BookingOrigin {
 }
 
 export type BookingResult =
-  | { ok: true; id: string; summary: string }
+  | { ok: true; id: string; summary: string; paymentUrl?: string }
   | { ok: false; reason: 'slot_taken' | 'invalid' | 'unavailable'; message: string };
 
 export interface BookingProvider {
